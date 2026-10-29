@@ -118,6 +118,49 @@ export function registerRoutes(app: FastifyInstance, options: RegisterRoutesOpti
     return { ok: true, executed: result.executed, rundown: engine.getStatus() };
   });
 
+  // Cue Engine control: toggle, enable, disable, status
+  app.get("/api/v1/cues", async () => ({
+    enabled: engine.isCueEngineEnabled(),
+  }));
+
+  app.get("/api/v1/rundown/cues", async () => ({
+    enabled: engine.isCueEngineEnabled(),
+  }));
+
+  app.post<{ Body?: { enabled?: boolean } }>(
+    "/api/v1/cues/toggle",
+    { preHandler: requireAuth },
+    async (req) => {
+      const targetEnabled = typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined;
+      const enabled = targetEnabled !== undefined
+        ? engine.setCueEngineEnabled(targetEnabled)
+        : engine.toggleCueEngine();
+      return { ok: true, cueEngineEnabled: enabled, rundown: engine.getStatus() };
+    }
+  );
+
+  app.post<{ Body?: { enabled?: boolean } }>(
+    "/api/v1/rundown/cues/toggle",
+    { preHandler: requireAuth },
+    async (req) => {
+      const targetEnabled = typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined;
+      const enabled = targetEnabled !== undefined
+        ? engine.setCueEngineEnabled(targetEnabled)
+        : engine.toggleCueEngine();
+      return { ok: true, cueEngineEnabled: enabled, rundown: engine.getStatus() };
+    }
+  );
+
+  app.post("/api/v1/cues/enable", { preHandler: requireAuth }, async () => {
+    const enabled = engine.setCueEngineEnabled(true);
+    return { ok: true, cueEngineEnabled: enabled, rundown: engine.getStatus() };
+  });
+
+  app.post("/api/v1/cues/disable", { preHandler: requireAuth }, async () => {
+    const enabled = engine.setCueEngineEnabled(false);
+    return { ok: true, cueEngineEnabled: enabled, rundown: engine.getStatus() };
+  });
+
   // 4. Variables & Varfetch
   app.get("/api/v1/variables", async () => ({
     variables: variableStore.getAll(),

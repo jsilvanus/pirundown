@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 export type RundownEventType =
   | "rundown_state"
   | "cue_fired"
+  | "cue_engine_toggled"
   | "action_executed"
   | "variable_updated";
 

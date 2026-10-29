@@ -28,6 +28,7 @@ export interface RundownStatusSnapshot {
   currentItem: ItemStateSnapshot | null;
   items: ItemStateSnapshot[];
   variables: Record<string, string>;
+  cueEngineEnabled: boolean;
   history: Array<{ timestamp: string; type: string; detail: unknown }>;
 }
 
@@ -36,6 +37,7 @@ export class RundownEngine {
   private currentIndex = -1;
   private readonly itemStates = new Map<string, ItemStatus>();
   private readonly history: Array<{ timestamp: string; type: string; detail: unknown }> = [];
+  private cueEngineEnabled = true;
 
   private readonly variableStore: VariableStore;
   private readonly varfetchEngine: VarfetchEngine;
@@ -114,6 +116,24 @@ export class RundownEngine {
       this.currentIndex = -1;
     }
     this.emitState();
+  }
+
+  isCueEngineEnabled(): boolean {
+    return this.cueEngineEnabled;
+  }
+
+  setCueEngineEnabled(enabled: boolean): boolean {
+    if (this.cueEngineEnabled !== enabled) {
+      this.cueEngineEnabled = enabled;
+      this.logHistory("cue_engine_toggled", { enabled });
+      this.eventBroker.emit("cue_engine_toggled", { enabled });
+      this.emitState();
+    }
+    return this.cueEngineEnabled;
+  }
+
+  toggleCueEngine(): boolean {
+    return this.setCueEngineEnabled(!this.cueEngineEnabled);
   }
 
   getCurrentItem(): RundownItem | null {
@@ -223,6 +243,7 @@ export class RundownEngine {
   }
 
   async onTranscript(text: string): Promise<boolean> {
+    if (!this.cueEngineEnabled) return false;
     if (!this.rundown || this.currentIndex < 0 || this.currentIndex >= this.rundown.rundown.length) {
       return false;
     }
@@ -272,6 +293,7 @@ export class RundownEngine {
   async onSoundEvent(
     event: "music_start" | "music_stop" | "speech_start" | "speech_stop" | "silence"
   ): Promise<boolean> {
+    if (!this.cueEngineEnabled) return false;
     if (!this.rundown || this.currentIndex < 0 || this.currentIndex >= this.rundown.rundown.length) {
       return false;
     }
@@ -365,6 +387,7 @@ export class RundownEngine {
         currentItem: null,
         items: [],
         variables: this.variableStore.getAll(),
+        cueEngineEnabled: this.cueEngineEnabled,
         history: [...this.history],
       };
     }
@@ -395,6 +418,7 @@ export class RundownEngine {
       currentItem,
       items,
       variables: this.variableStore.getAll(),
+      cueEngineEnabled: this.cueEngineEnabled,
       history: [...this.history],
     };
   }

@@ -13,6 +13,7 @@ Usage:
   pirundown skip [id]                  Skip current (or specified) item
   pirundown fire <id>                  Manually fire cue & execute actions for item
   pirundown reset                      Reset active rundown to start
+  pirundown cues [on|off|toggle]       Toggle or set cue engine (pure human control mode)
   pirundown vars                       List all active variables
   pirundown set <name> <value>         Set a variable value
   pirundown transcript <text>          Inject transcript text for testing
@@ -86,7 +87,9 @@ async function runCli(): Promise<void> {
             console.log(`\nRundown: ${rd.title} (${rd.service ?? "Service"})`);
             console.log(`Progress: [${rd.currentIndex + 1}/${rd.totalItems}]`);
             console.log(`Current:  ${rd.currentItem?.title ?? "None"} (${rd.currentItem?.id ?? "-"})`);
-            console.log(`Status:   ${rd.currentItem?.status ?? "-"}\n`);
+            console.log(`Status:   ${rd.currentItem?.status ?? "-"}`);
+            const cueState = rd.cueEngineEnabled !== false ? "ENABLED (Auto cues active)" : "OFF (Pure human control mode)";
+            console.log(`Cues:     ${cueState}\n`);
             console.log("Items:");
             for (const it of rd.items) {
               const marker = it.id === rd.currentItem?.id ? "👉" : "  ";
@@ -159,6 +162,26 @@ async function runCli(): Promise<void> {
       case "reset": {
         const res = await post("/api/v1/rundown/reset");
         console.log(jsonMode ? JSON.stringify(res, null, 2) : "Reset rundown.");
+        break;
+      }
+
+      case "cues":
+      case "cue": {
+        const sub = filteredArgs[1]?.toLowerCase();
+        let res: any;
+        if (sub === "on" || sub === "enable" || sub === "1") {
+          res = await post("/api/v1/cues/enable");
+        } else if (sub === "off" || sub === "disable" || sub === "0") {
+          res = await post("/api/v1/cues/disable");
+        } else {
+          res = await post("/api/v1/cues/toggle");
+        }
+        if (jsonMode) {
+          console.log(JSON.stringify(res, null, 2));
+        } else {
+          const stateStr = res.cueEngineEnabled ? "ENABLED (Auto cues active)" : "DISABLED (Pure human control mode)";
+          console.log(`Cue engine is now: ${stateStr}`);
+        }
         break;
       }
 
