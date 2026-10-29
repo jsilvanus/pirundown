@@ -110,7 +110,9 @@ export class GatewaySseClient {
       const type = payload.type ?? eventType;
       const data = payload.data ?? payload;
 
-      if (type === "transcript" && data?.text) {
+      if (type === "rundown") {
+        this.engine.onGatewayRundownState(data);
+      } else if (type === "transcript" && data?.text) {
         void this.engine.onTranscript(String(data.text));
       } else if (type === "pivoice" || type === "pisound") {
         this.handleAudioTelemetry(data);

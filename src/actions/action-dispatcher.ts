@@ -172,6 +172,28 @@ export class ActionDispatcher {
     };
   }
 
+  async pushRundownToGateway(doc: unknown): Promise<boolean> {
+    const url = `${this.config.pigatewayUrl}/api/v1/rundown/load`;
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Actor": "rundown",
+      };
+      if (this.config.apiKey) {
+        headers["Authorization"] = `Bearer ${this.config.apiKey}`;
+      }
+      const res = await this.fetchFn(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(doc),
+        signal: AbortSignal.timeout(3000),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   private async callGatewayAction(payload: {
     action: string;
     params?: Record<string, unknown>;

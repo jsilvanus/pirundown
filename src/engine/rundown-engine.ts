@@ -101,6 +101,7 @@ export class RundownEngine {
       this.currentIndex = -1;
     }
 
+    await this.actionDispatcher.pushRundownToGateway(doc);
     this.emitState();
   }
 
@@ -130,6 +131,27 @@ export class RundownEngine {
       this.emitState();
     }
     return this.cueEngineEnabled;
+  }
+
+  onGatewayRundownState(snapshot: {
+    currentIndex?: number;
+    items?: Array<{ id: string; status: ItemStatus }>;
+    variables?: Record<string, string>;
+  }): void {
+    if (typeof snapshot.currentIndex === "number") {
+      this.currentIndex = snapshot.currentIndex;
+    }
+    if (Array.isArray(snapshot.items)) {
+      for (const it of snapshot.items) {
+        this.itemStates.set(it.id, it.status);
+      }
+    }
+    if (snapshot.variables) {
+      for (const [k, v] of Object.entries(snapshot.variables)) {
+        this.variableStore.set(k, v, "gateway");
+      }
+    }
+    this.emitState();
   }
 
   toggleCueEngine(): boolean {
