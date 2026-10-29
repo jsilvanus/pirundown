@@ -30,7 +30,7 @@ test("ActionDispatcher - dispatches ATEM cut via pigateway actions execute", asy
   assert.equal(result.ok, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.url, "http://gateway.test/api/v1/actions/execute");
-  assert.deepEqual(calls[0]?.body, { action: "atem:cut", params: { input: 2 } });
+  assert.deepEqual(calls[0]?.body, { actor: "rundown", action: "atem:cut", params: { input: 2 } });
 });
 
 test("ActionDispatcher - dispatches camera preset with variable interpolation via pigateway", async () => {
@@ -58,7 +58,7 @@ test("ActionDispatcher - dispatches camera preset with variable interpolation vi
   assert.equal(result.ok, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.url, "http://gateway.test/api/v1/actions/execute");
-  assert.deepEqual(calls[0]?.body, { action: "cam:preset", params: { id: 1, preset: "altar" } });
+  assert.deepEqual(calls[0]?.body, { actor: "rundown", action: "cam:preset", params: { id: 1, preset: "altar" } });
 });
 
 test("ActionDispatcher - dispatches variable setting directly", async () => {
@@ -95,11 +95,11 @@ test("ActionDispatcher - forwards string shorthand actions to pigateway", async 
 
   await dispatcher.dispatch("cam:2:preset:pulpit");
   assert.equal(calls[0]?.url, "http://gateway.test/api/v1/actions/execute");
-  assert.deepEqual(calls[0]?.body, { action: "cam:2:preset:pulpit" });
+  assert.deepEqual(calls[0]?.body, { actor: "rundown", action: "cam:2:preset:pulpit" });
 
   await dispatcher.dispatch("atem:cut:3");
   assert.equal(calls[1]?.url, "http://gateway.test/api/v1/actions/execute");
-  assert.deepEqual(calls[1]?.body, { action: "atem:cut:3" });
+  assert.deepEqual(calls[1]?.body, { actor: "rundown", action: "atem:cut:3" });
 
   await dispatcher.dispatch("var:speaker=Pastori");
   assert.equal(store.get("speaker"), "Pastori");

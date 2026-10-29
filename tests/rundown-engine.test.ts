@@ -68,8 +68,8 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
   assert.equal(soundMatched, true);
 
   // Actions for alkusoitto should have dispatched to gateway execute
-  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "cam:preset"));
-  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "atem:cut"));
+  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "cam:preset" && c.body?.actor === "rundown"));
+  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "atem:cut" && c.body?.actor === "rundown"));
 
   // Pointer should have advanced to alkusiunaus
   status = engine.getStatus();

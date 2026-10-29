@@ -175,17 +175,27 @@ export class ActionDispatcher {
   private async callGatewayAction(payload: {
     action: string;
     params?: Record<string, unknown>;
+    actor?: string;
   }): Promise<ExecutionResult> {
     const url = `${this.config.pigatewayUrl}/api/v1/actions/execute`;
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const actor = payload.actor ?? "rundown";
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Actor": actor,
+      };
       if (this.config.apiKey) {
         headers["Authorization"] = `Bearer ${this.config.apiKey}`;
       }
+      const fullPayload = {
+        actor,
+        action: payload.action,
+        ...(payload.params !== undefined ? { params: payload.params } : {}),
+      };
       const res = await this.fetchFn(url, {
         method: "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify(fullPayload),
         signal: AbortSignal.timeout(3000),
       });
 
