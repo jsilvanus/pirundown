@@ -1,0 +1,136 @@
+version: 2
+title: "Messu"
+service: "Päiväjumalanpalvelus"
+church: "Riihimäen Keskuskirkko"
+date: "2026-11-01"
+
+# Connectors for external liturgical data (varfetch)
+connectors:
+  kirkkovuosi:
+    baseUrl: "https://api.example.org"
+    headers:
+      - key: "Accept-Language"
+        value: "fi"
+    requests:
+      tanaan:
+        method: "GET"
+        path: "/api/v1/liturgy/today"
+        mappings:
+          - jsonPath: "$.holyDay.name"
+            variable: "pyhan_nimi"
+          - jsonPath: "$.texts.gospel.reference"
+            variable: "evankeliumi_viite"
+
+# Pre-service variable setup and lectionary fetching
+preflight:
+  variables:
+    preacher: "Pastori Matti"
+    cantor: "Kanttori Liisa"
+    hymn_1: "332"
+    hymn_2: "450"
+    hymn_3: "228"
+    section: "Valmistelu"
+
+# Service cue sheet & automation sequence
+rundown:
+  - id: "alkusoitto"
+    title: "Alkusoitto (Preludi)"
+    section: "Johdanto"
+    notes: "Urkuri soittaa alkumusiikin. Seurakunta asettuu paikoilleen."
+    cue:
+      type: "sound"
+      event: "music_stop"
+    actions:
+      - cam: { id: 1, preset: "altar" }
+      - atem: { cut: 1 }
+      - var: { section: "Alkusoitto" }
+
+  - id: "alkusiunaus"
+    title: "Alkusiunaus & Johdantosanat"
+    section: "Johdanto"
+    notes: "Liturgi aloittaa alttarilta."
+    cue:
+      type: "fuzzy"
+      phrase: "Isän ja Pojan ja Pyhän Hengen nimeen"
+      threshold: 0.80
+    actions:
+      - cam: { id: 2, preset: "altar" }
+      - tally: { unit: 1, cue: "operator-call" }
+      - var: { section: "Johdanto" }
+
+  - id: "alkuvirsi"
+    title: "Alkuvirsi"
+    section: "Ylistys"
+    notes: "Seurakunta veisaa ensimmäisen virren."
+    cue:
+      type: "fuzzy"
+      phrase: "Veisaamme virren {{hymn_1}}"
+      threshold: 0.75
+    actions:
+      - pipgm: { hymn: "{{hymn_1}}" }
+      - atem: { dsk: 1, state: "on" }
+      - var: { section: "Alkuvirsi" }
+
+  - id: "paivan_rukous"
+    title: "Päivän rukous (Kollektarukous)"
+    section: "Sana"
+    notes: "Liturgi lausuu rukoilkaamme."
+    cue:
+      type: "fuzzy"
+      phrase: "Rukoilkaamme"
+      threshold: 0.85
+    actions:
+      - cam: { id: 1, preset: "altar" }
+      - atem: { dsk: 1, state: "off" }
+      - var: { section: "Päivän rukous" }
+
+  - id: "evankeliumi"
+    title: "Pyhä evankeliumi"
+    section: "Sana"
+    notes: "Luetaan päivän evankeliumiteksti."
+    cue:
+      type: "fuzzy"
+      phrase: "Nousemme kuulemaan pyhää evankeliumia"
+      threshold: 0.80
+    actions:
+      - cam: { id: 2, preset: "ambo" }
+      - atem: { cut: 2 }
+      - var: { section: "Evankeliumi" }
+
+  - id: "saarna"
+    title: "Saarna"
+    section: "Sana"
+    notes: "Saarnaaja saarnastuolissa."
+    cue:
+      type: "sound"
+      event: "music_stop"
+    actions:
+      - cam: { id: 2, preset: "pulpit" }
+      - atem: { cut: 3 }
+      - var: { section: "Saarna", speaker: "{{preacher}}" }
+
+  - id: "siunaus"
+    title: "Herran siunaus"
+    section: "Päätös"
+    notes: "Liturgi alttarilla kääntyy seurakuntaan päin."
+    cue:
+      type: "fuzzy"
+      phrase: "Herra siunatkoon teitä ja varjelkoon teitä"
+      threshold: 0.80
+    actions:
+      - cam: { id: 1, preset: "altar-wide" }
+      - atem: { cut: 1 }
+      - var: { section: "Siunaus" }
+
+  - id: "paatosvirsi"
+    title: "Päätösvirsi"
+    section: "Päätös"
+    notes: "Loppuvirsi ja uutiset."
+    cue:
+      type: "fuzzy"
+      phrase: "Päätösvirtenä veisaamme virren {{hymn_3}}"
+      threshold: 0.75
+    actions:
+      - pipgm: { hymn: "{{hymn_3}}" }
+      - atem: { cut: 1 }
+      - var: { section: "Päätösvirsi" }
