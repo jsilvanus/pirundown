@@ -11,7 +11,7 @@ import type { AppConfig } from "../src/config.js";
 import { resolve } from "node:path";
 
 test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async () => {
-  const executedCalls: Array<{ url: string; body?: unknown }> = [];
+  const executedCalls: Array<{ url: string; body?: any }> = [];
   const mockFetch: typeof fetch = async (url, init) => {
     executedCalls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
@@ -67,9 +67,9 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
   const soundMatched = await engine.onSoundEvent("music_stop");
   assert.equal(soundMatched, true);
 
-  // Actions for alkusoitto should have executed (cam 1 altar, atem cut 1)
-  assert.ok(executedCalls.some((c) => c.url.includes("/cameras/1/preset/altar")));
-  assert.ok(executedCalls.some((c) => c.url.includes("/atem/cut")));
+  // Actions for alkusoitto should have dispatched to gateway execute
+  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "cam:preset"));
+  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "atem:cut"));
 
   // Pointer should have advanced to alkusiunaus
   status = engine.getStatus();
@@ -93,8 +93,15 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
   const fireRes = await engine.fire("alkuvirsi");
   assert.equal(fireRes.ok, true);
 
-  // Verify pipgm action executed with interpolated hymn 332
-  assert.ok(executedCalls.some((c) => c.url.includes("/pipgm/hymn/332")));
+  // Verify pipgm action dispatched to gateway with interpolated hymn 332
+  assert.ok(
+    executedCalls.some(
+      (c) =>
+        c.url.includes("/actions/execute") &&
+        c.body?.action === "pipgm:hymn" &&
+        c.body?.params?.hymn === "332"
+    )
+  );
 
   // Pointer advances to paivan_rukous
   status = engine.getStatus();
