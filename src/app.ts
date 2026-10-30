@@ -54,6 +54,7 @@ export async function buildApp(config: AppConfig, options?: { fetchFn?: typeof f
     varfetchEngine,
     eventBroker,
     storage,
+    actionDispatcher,
     apiKey: config.apiKey,
   });
 

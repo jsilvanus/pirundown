@@ -539,3 +539,13 @@ The test suite covers:
 - **`schema.test.ts`**: Zod validation of Rundown v2 specifications and connectors.
 - **`variable-store.test.ts`**: TTL expiry, string interpolation, and Varfetch integrations.
 - **`action-dispatcher.test.ts`**: ATEM cuts, PTZ camera presets, and PiGateway dispatching with actor stamping.
+
+---
+
+## Pi Ecosystem Integration & Status Updates
+
+This project is an integral component of the [Pi Production Ecosystem](file:///d:/piecosystem).
+
+> [!IMPORTANT]
+> Any changes to this repository's architectural role, API routes, communication protocols, exposed ports, dependencies, or runtime status **must be documented in the central `piecosystem` coordination repository** (`docs/projects-catalog.md` and `docs/inter-service-matrix.md`).
+> Always verify cross-system health with `npm run status` in `D:\piecosystem`.

@@ -4,6 +4,8 @@ import type { VariableStore } from "./variables/variable-store.js";
 import type { VarfetchEngine } from "./variables/varfetch-engine.js";
 import type { RundownEventBroker } from "./events.js";
 import type { RundownStorage } from "./storage/rundown-storage.js";
+import type { ActionDispatcher } from "./actions/action-dispatcher.js";
+import { ActionItemSchema } from "./schema/rundown-v2.js";
 import { parseRundownYaml, loadRundownFile } from "./parser/yaml-parser.js";
 
 export interface RegisterRoutesOptions {
@@ -12,11 +14,12 @@ export interface RegisterRoutesOptions {
   varfetchEngine: VarfetchEngine;
   eventBroker: RundownEventBroker;
   storage: RundownStorage;
+  actionDispatcher?: ActionDispatcher;
   apiKey?: string | undefined;
 }
 
 export function registerRoutes(app: FastifyInstance, options: RegisterRoutesOptions): void {
-  const { engine, variableStore, varfetchEngine, eventBroker, storage, apiKey } = options;
+  const { engine, variableStore, varfetchEngine, eventBroker, storage, actionDispatcher, apiKey } = options;
 
   // Simple auth check for mutating calls if apiKey configured
   const requireAuth = async (req: FastifyRequest, reply: FastifyReply) => {
@@ -128,6 +131,34 @@ export function registerRoutes(app: FastifyInstance, options: RegisterRoutesOpti
     }
     return { ok: true, executed: result.executed, rundown: engine.getStatus() };
   });
+
+  // Action Dispatch endpoint (execute or dry-run a single action or shorthand)
+  app.post<{ Body: { action: unknown; dryRun?: boolean } }>(
+    "/api/v1/actions/dispatch",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const { action, dryRun } = req.body ?? {};
+      if (action === undefined || action === null) {
+        return reply.status(400).send({ error: "Missing 'action' in request body." });
+      }
+
+      const parseResult = ActionItemSchema.safeParse(action);
+      if (!parseResult.success) {
+        return reply.status(422).send({ error: "Invalid action schema", details: parseResult.error.format() });
+      }
+
+      if (dryRun) {
+        return { ok: true, dryRun: true, action: parseResult.data };
+      }
+
+      if (actionDispatcher) {
+        const result = await actionDispatcher.dispatch(parseResult.data);
+        return { ok: result.ok, result };
+      }
+
+      return reply.status(501).send({ error: "ActionDispatcher not configured on this server." });
+    }
+  );
 
   // Cue Engine control: toggle, enable, disable, status
   app.get("/api/v1/cues", async () => ({
