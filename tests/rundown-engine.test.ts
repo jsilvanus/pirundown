@@ -71,28 +71,36 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
   assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "cam:preset" && c.body?.actor === "rundown"));
   assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "atem:cut" && c.body?.actor === "rundown"));
 
-  // Line 1 fired: pointer moves to line 1 and remains active while playing
+  // Line 1 is Section Johdanto; Line 2 is Alkusoitto.
+  // When alkusoitto fires, pointer moves to display line 2
   status = engine.getStatus();
   assert.equal(status.currentIndex, 0);
-  assert.equal(status.currentLine, 1);
+  assert.equal(status.currentLine, 2);
   assert.equal(status.currentItem?.id, "alkusoitto");
   assert.equal(status.currentItem?.status, "active");
 
-  // 3. Transcript event: Priest speaks Invocatio for line 2 (alkusiunaus)
+  // Verify display structure
+  assert.equal(status.display.lines[0]?.type, "section");
+  assert.equal(status.display.lines[0]?.title, "Johdanto");
+  assert.equal(status.display.lines[0]?.targetLine, 2);
+  assert.equal(status.display.lines[1]?.type, "item");
+  assert.equal(status.display.lines[1]?.id, "alkusoitto");
+
+  // 3. Transcript event: Priest speaks Invocatio for alkusiunaus (Display Line 3)
   const transcriptMatched = await engine.onTranscript(
     "Liturgi aloittaa Isän ja Pojan ja Pyhän Hengen nimeen olkaa hyvät"
   );
   assert.equal(transcriptMatched, true);
 
-  // Line 2 fired: pointer moves to line 2 (alkusiunaus), line 1 becomes completed
+  // Alkusiunaus fired: pointer moves to display line 3, alkusoitto becomes completed
   status = engine.getStatus();
   assert.equal(status.currentIndex, 1);
-  assert.equal(status.currentLine, 2);
+  assert.equal(status.currentLine, 3);
   assert.equal(status.currentItem?.id, "alkusiunaus");
   assert.equal(status.currentItem?.status, "active");
   assert.equal(status.items[0]?.status, "completed");
 
-  // 4. Manual fire: operator triggers line 3 (alkuvirsi) directly
+  // 4. Manual fire: operator triggers alkuvirsi directly (Display Line 5 under Section Ylistys)
   executedCalls.length = 0;
   const fireRes = await engine.fire("alkuvirsi");
   assert.equal(fireRes.ok, true);
@@ -107,10 +115,10 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
     )
   );
 
-  // Line 3 fired: pointer moves to line 3 (alkuvirsi)
+  // Alkuvirsi fired: pointer moves to display line 5
   status = engine.getStatus();
   assert.equal(status.currentIndex, 2);
-  assert.equal(status.currentLine, 3);
+  assert.equal(status.currentLine, 5);
   assert.equal(status.currentItem?.id, "alkuvirsi");
   assert.equal(status.currentItem?.status, "active");
   assert.equal(status.items[1]?.status, "completed");
@@ -261,4 +269,124 @@ test("RundownEngine - line 17 fires and pointer moves to line 17", async () => {
   for (let idx = 17; idx < 25; idx++) {
     assert.equal(status.items[idx]?.status, "pending");
   }
+});
+
+test("RundownEngine - firing section header delegates to first child item", async () => {
+  const variableStore = new VariableStore();
+  const varfetchEngine = new VarfetchEngine(variableStore);
+  const cueMatcher = new CueMatcher();
+  const actionDispatcher = new ActionDispatcher(
+    { pigatewayUrl: "http://gateway.test" } as any,
+    variableStore,
+    varfetchEngine,
+    async () => new Response(JSON.stringify({ ok: true }))
+  );
+  const eventBroker = new RundownEventBroker();
+  const engine = new RundownEngine(
+    variableStore,
+    varfetchEngine,
+    cueMatcher,
+    actionDispatcher,
+    eventBroker
+  );
+
+  await engine.load({
+    version: 2,
+    title: "Section Test",
+    rundown: [
+      { section: "Johdanto", title: "Johdanto-osa" },
+      { id: "alkusoitto", title: "Alkusoitto", actions: ["cam:1:preset:1"] },
+      { id: "alkusiunaus", title: "Alkusiunaus", actions: ["cam:2:preset:1"] },
+      { section: "Sana", title: "Sana-osa" },
+      { id: "saarna", title: "Saarna", actions: ["cam:2:preset:pulpit"] },
+    ],
+  } as any);
+
+  let status = engine.getStatus();
+  assert.equal(status.display.totalLines, 5);
+  assert.equal(status.display.lines[0]?.type, "section");
+  assert.equal(status.display.lines[0]?.line, 1);
+  assert.equal(status.display.lines[0]?.targetLine, 2);
+
+  assert.equal(status.display.lines[3]?.type, "section");
+  assert.equal(status.display.lines[3]?.line, 4);
+  assert.equal(status.display.lines[3]?.targetLine, 5);
+
+  // Firing section header at Line 4 (Section "Sana")
+  const fireSecRes = await engine.fire(4);
+  assert.equal(fireSecRes.ok, true);
+
+  status = engine.getStatus();
+  // Pointer must have moved to Line 5 (Saarna)!
+  assert.equal(status.currentLine, 5);
+  assert.equal(status.currentItem?.id, "saarna");
+  assert.equal(status.currentItem?.status, "active");
+  assert.equal(status.display.lines[0]?.status, "completed");
+  assert.equal(status.display.lines[1]?.status, "completed");
+  assert.equal(status.display.lines[2]?.status, "completed");
+  assert.equal(status.display.lines[3]?.status, "active"); // Section Sana is active
+});
+
+test("RundownEngine - items with subitems have numbered display lines and fire correctly", async () => {
+  const variableStore = new VariableStore();
+  const varfetchEngine = new VarfetchEngine(variableStore);
+  const cueMatcher = new CueMatcher();
+  const actionDispatcher = new ActionDispatcher(
+    { pigatewayUrl: "http://gateway.test" } as any,
+    variableStore,
+    varfetchEngine,
+    async () => new Response(JSON.stringify({ ok: true }))
+  );
+  const eventBroker = new RundownEventBroker();
+  const engine = new RundownEngine(
+    variableStore,
+    varfetchEngine,
+    cueMatcher,
+    actionDispatcher,
+    eventBroker
+  );
+
+  await engine.load({
+    version: 2,
+    title: "Subitems Test",
+    rundown: [
+      {
+        id: "alkusoitto",
+        title: "Alkusoitto (Preludi)",
+        subitems: [
+          { id: "alkusoitto_alku", title: "Urkuri asettuu", actions: ["cam:1:preset:organ"] },
+          { id: "alkusoitto_loppu", title: "Musiikin loppu", actions: ["cam:1:preset:altar", "atem:cut:1"] },
+        ],
+      },
+      {
+        id: "alkusiunaus",
+        title: "Alkusiunaus",
+        actions: ["cam:2:preset:altar"],
+      },
+    ],
+  } as any);
+
+  let status = engine.getStatus();
+  assert.equal(status.display.totalLines, 4);
+  assert.equal(status.display.lines[0]?.type, "item");
+  assert.equal(status.display.lines[0]?.title, "Alkusoitto (Preludi)");
+  assert.equal(status.display.lines[0]?.targetLine, 2); // Container points to first subitem Line 2
+
+  assert.equal(status.display.lines[1]?.type, "subitem");
+  assert.equal(status.display.lines[1]?.line, 2);
+  assert.equal(status.display.lines[1]?.id, "alkusoitto_alku");
+
+  assert.equal(status.display.lines[2]?.type, "subitem");
+  assert.equal(status.display.lines[2]?.line, 3);
+  assert.equal(status.display.lines[2]?.id, "alkusoitto_loppu");
+
+  // Fire Line 3 (second subitem)
+  const fireSub2 = await engine.fire(3);
+  assert.equal(fireSub2.ok, true);
+
+  status = engine.getStatus();
+  assert.equal(status.currentLine, 3);
+  assert.equal(status.currentItem?.id, "alkusoitto_loppu");
+  assert.equal(status.display.lines[1]?.status, "completed"); // First subitem completed
+  assert.equal(status.display.lines[2]?.status, "active"); // Second subitem active
 });

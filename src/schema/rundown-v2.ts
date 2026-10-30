@@ -169,16 +169,39 @@ export const ActionItemSchema = z.union([
 export type ActionItem = z.infer<typeof ActionItemSchema>;
 
 // --- Rundown Item Schema ---
-export const RundownItemSchema = z.object({
+export const RundownSubitemSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
-  section: z.string().optional(),
   notes: z.string().optional(),
   cue: CueSchema.optional(),
   actions: z.array(ActionItemSchema).default([]),
 });
 
-export type RundownItem = z.infer<typeof RundownItemSchema>;
+export type RundownSubitem = z.infer<typeof RundownSubitemSchema>;
+
+export const RundownItemSchema: z.ZodType<any> = z.lazy(() =>
+  z.object({
+    id: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    section: z.string().optional(),
+    notes: z.string().optional(),
+    cue: CueSchema.optional(),
+    actions: z.array(ActionItemSchema).default([]),
+    subitems: z.array(RundownSubitemSchema).optional(),
+    items: z.array(RundownItemSchema).optional(),
+  })
+);
+
+export type RundownItem = {
+  id?: string;
+  title?: string;
+  section?: string;
+  notes?: string;
+  cue?: Cue;
+  actions: ActionItem[];
+  subitems?: RundownSubitem[];
+  items?: RundownItem[];
+};
 
 // --- Top-Level Rundown v2 Document ---
 export const PreflightFetchSchema = z.object({

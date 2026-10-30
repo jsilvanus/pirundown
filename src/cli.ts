@@ -6,6 +6,7 @@ pirundown - CLI for the Pi Rundown & Cue Engine
 
 Usage:
   pirundown status                     Get current rundown state and active item
+  pirundown display                    Render the full presentational rundown display
   pirundown load <file.yaml>           Load and activate a Rundown v2 YAML file
   pirundown next                       Advance to the next item
   pirundown prev                       Step back to the previous item
@@ -75,6 +76,7 @@ async function runCli(): Promise<void> {
 
   try {
     switch (command) {
+      case "display":
       case "status": {
         const data = await get("/api/v1/status");
         if (jsonMode) {
@@ -85,18 +87,31 @@ async function runCli(): Promise<void> {
             console.log("No rundown loaded.");
           } else {
             console.log(`\nRundown: ${rd.title} (${rd.service ?? "Service"})`);
-            console.log(`Progress: [Line ${rd.currentIndex + 1}/${rd.totalItems}]`);
-            console.log(`Current:  ${rd.currentItem?.title ?? "None"} (${rd.currentItem?.id ?? "-"})`);
-            console.log(`Status:   ${rd.currentItem?.status ?? "-"}`);
+            console.log(`Active Line: [Line ${rd.currentLine ?? "-"}] | Total Display Lines: ${rd.totalLines ?? rd.display?.totalLines ?? rd.totalItems}`);
+            console.log(`Current:     ${rd.currentItem?.title ?? "None"} (${rd.currentItem?.id ?? "-"})`);
+            console.log(`Status:      ${rd.currentItem?.status ?? "-"}`);
             const cueState = rd.cueEngineEnabled !== false ? "ENABLED (Auto cues active)" : "OFF (Pure human control mode)";
-            console.log(`Cues:     ${cueState}\n`);
-            console.log("Items:");
-            for (const it of rd.items) {
-              const marker = it.id === rd.currentItem?.id ? "👉" : "  ";
-              const statusTag = `[${it.status.toUpperCase()}]`.padEnd(11);
-              const lineStr = String(it.line ?? "").padStart(2);
-              console.log(`${marker} Line ${lineStr} ${statusTag} ${it.id.padEnd(16)} ${it.title}`);
+            console.log(`Cues:        ${cueState}\n`);
+            console.log("Presentational Rundown Display:");
+            console.log("-------------------------------------------------------------------------------");
+            const rows = rd.display?.lines ?? rd.items ?? [];
+            for (const row of rows) {
+              const marker = row.line === rd.currentLine ? "👉" : "  ";
+              const lineStr = String(row.line ?? "").padStart(2);
+              const statusTag = `[${row.status.toUpperCase()}]`.padEnd(11);
+              if (row.type === "section") {
+                console.log(`${marker} Line ${lineStr} ${statusTag} === ${row.title.toUpperCase()} ===`);
+              } else if (row.type === "subitem") {
+                const cue = row.cueSummary ? ` [${row.cueSummary}]` : "";
+                const acts = row.actionsSummary?.length ? ` -> ${row.actionsSummary.join(", ")}` : "";
+                console.log(`${marker} Line ${lineStr} ${statusTag}   ↳ ${row.title}${cue}${acts}`);
+              } else {
+                const cue = row.cueSummary ? ` [${row.cueSummary}]` : "";
+                const acts = row.actionsSummary?.length ? ` -> ${row.actionsSummary.join(", ")}` : "";
+                console.log(`${marker} Line ${lineStr} ${statusTag} ${row.title}${cue}${acts}`);
+              }
             }
+            console.log("-------------------------------------------------------------------------------");
           }
         }
         break;
