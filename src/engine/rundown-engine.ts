@@ -1,10 +1,16 @@
 import {
   formatDurationSec,
   formatTimingPair,
+  GlobalCueSchema,
   parseDurationSec,
+  type GlobalCue,
   type RundownV2,
   type RundownItem,
 } from "../schema/rundown-v2.js";
+import {
+  compileGlobalCueFromPrompt,
+  matchesLiturgicalSection,
+} from "../cues/global-cues.js";
 import type { VariableStore } from "../variables/variable-store.js";
 import type { VarfetchEngine } from "../variables/varfetch-engine.js";
 import type { CueMatcher } from "../cues/cue-matcher.js";
@@ -108,6 +114,7 @@ export interface RundownStatusSnapshot {
   soundState?: string;
   variables: Record<string, string>;
   cueEngineEnabled: boolean;
+  globalCues?: GlobalCue[];
   history: Array<{ timestamp: string; type: string; detail: unknown }>;
 }
 
@@ -118,6 +125,8 @@ export class RundownEngine {
   private readonly history: Array<{ timestamp: string; type: string; detail: unknown }> = [];
   private cueEngineEnabled = true;
   private readonly firedItems = new Set<string>();
+  private readonly globalCues = new Map<string, GlobalCue>();
+  private readonly firedGlobalCuesInSection = new Set<string>();
   private activeAlternator: Alternator | null = null;
   private enforcedTimer: NodeJS.Timeout | null = null;
   private currentSoundState: "speech" | "music" | "silence" | "unknown" = "unknown";
@@ -156,8 +165,13 @@ export class RundownEngine {
     this.itemStates.clear();
     this.history.length = 0;
     this.firedItems.clear();
+    this.firedGlobalCuesInSection.clear();
     this.stopAlternator();
-    this.stopAlternator();
+    if (Array.isArray(doc.global_cues)) {
+      for (const gc of doc.global_cues) {
+        this.globalCues.set(gc.id, structuredClone(gc));
+      }
+    }
 
     // 1. Register connectors
     if (doc.connectors) {
@@ -276,6 +290,110 @@ export class RundownEngine {
 
   toggleCueEngine(): boolean {
     return this.setCueEngineEnabled(!this.cueEngineEnabled);
+  }
+
+  listGlobalCues(): GlobalCue[] {
+    return Array.from(this.globalCues.values()).map((c) => structuredClone(c));
+  }
+
+  addGlobalCue(input: GlobalCue | { prompt: string; id?: string }): GlobalCue {
+    const cue =
+      "prompt" in input && !("trigger" in input)
+        ? compileGlobalCueFromPrompt(input.prompt, input.id)
+        : GlobalCueSchema.parse(input);
+    this.globalCues.set(cue.id, structuredClone(cue));
+    this.logHistory("global_cue_registered", { id: cue.id, name: cue.name, trigger: cue.trigger });
+    this.eventBroker.emit("global_cues_updated", { globalCues: this.listGlobalCues() });
+    this.emitState();
+    return structuredClone(cue);
+  }
+
+  toggleGlobalCue(id: string, enabled?: boolean): GlobalCue | null {
+    const existing = this.globalCues.get(id);
+    if (!existing) return null;
+    existing.enabled = enabled !== undefined ? enabled : !existing.enabled;
+    this.eventBroker.emit("global_cues_updated", { globalCues: this.listGlobalCues() });
+    this.emitState();
+    return structuredClone(existing);
+  }
+
+  removeGlobalCue(id: string): boolean {
+    const ok = this.globalCues.delete(id);
+    if (ok) {
+      this.eventBroker.emit("global_cues_updated", { globalCues: this.listGlobalCues() });
+      this.emitState();
+    }
+    return ok;
+  }
+
+  private async evaluateGlobalCuesForActiveItem(
+    item: ExecutableItem,
+    prevSectionKey: string | null
+  ): Promise<void> {
+    if (!this.cueEngineEnabled || this.globalCues.size === 0) return;
+    const currentSectionKey = item.parentId ?? item.section ?? item.id;
+    const sectionChanged = prevSectionKey !== currentSectionKey;
+
+    if (sectionChanged) {
+      if (prevSectionKey) {
+        for (const cue of this.globalCues.values()) {
+          if (
+            cue.enabled &&
+            cue.trigger.event === "section_end" &&
+            cue.trigger.section &&
+            matchesLiturgicalSection(prevSectionKey, cue.trigger.section)
+          ) {
+            await this.fireGlobalCue(cue, `section_end:${prevSectionKey}`);
+          }
+        }
+      }
+      this.firedGlobalCuesInSection.clear();
+    }
+
+    for (const cue of this.globalCues.values()) {
+      if (!cue.enabled) continue;
+      if (cue.oncePerSection && this.firedGlobalCuesInSection.has(cue.id)) continue;
+
+      if (cue.trigger.event === "section_start" && cue.trigger.section) {
+        const matches =
+          matchesLiturgicalSection(item.section, cue.trigger.section) ||
+          matchesLiturgicalSection(item.parentId, cue.trigger.section) ||
+          matchesLiturgicalSection(item.title, cue.trigger.section) ||
+          matchesLiturgicalSection(item.id, cue.trigger.section);
+        if (matches) {
+          this.firedGlobalCuesInSection.add(cue.id);
+          await this.fireGlobalCue(cue, `section_start:${cue.trigger.section}`);
+        }
+      } else if (cue.trigger.event === "item_start" && cue.trigger.itemId) {
+        if (matchesLiturgicalSection(item.id, cue.trigger.itemId) || matchesLiturgicalSection(item.title, cue.trigger.itemId)) {
+          this.firedGlobalCuesInSection.add(cue.id);
+          await this.fireGlobalCue(cue, `item_start:${item.id}`);
+        }
+      }
+    }
+  }
+
+  private async fireGlobalCue(cue: GlobalCue, reason: string): Promise<ExecutionResult[]> {
+    const results: ExecutionResult[] = [];
+    for (const act of cue.actions) {
+      const res = await this.actionDispatcher.dispatch(act);
+      results.push(res);
+    }
+    this.eventBroker.emit("global_cue_fired", {
+      cueId: cue.id,
+      name: cue.name,
+      reason,
+      actions: cue.actions,
+      results,
+      timestamp: new Date().toISOString(),
+    });
+    this.logHistory("global_cue_fired", {
+      cueId: cue.id,
+      name: cue.name,
+      reason,
+      actions: cue.actions,
+    });
+    return results;
   }
 
   onGatewayRundownState(snapshot: {
@@ -517,6 +635,18 @@ export class RundownEngine {
     if (!this.rundown) return false;
 
     this.cueMatcher.pushContextLine(text);
+
+    // 0. Check enabled global phrase cues first
+    for (const cue of this.globalCues.values()) {
+      if (
+        cue.enabled &&
+        cue.trigger.event === "phrase" &&
+        cue.trigger.phrase &&
+        text.toLowerCase().includes(cue.trigger.phrase.toLowerCase())
+      ) {
+        await this.fireGlobalCue(cue, `phrase:${cue.trigger.phrase}`);
+      }
+    }
 
     const { executableItems } = buildRundownDisplay(
       this.rundown.rundown,
@@ -795,12 +925,14 @@ export class RundownEngine {
 
   private onActiveItemChanged(item: ExecutableItem, nowMs = Date.now()): void {
     this.itemStartedAtMs = nowMs;
+    const prevSectionKey = this.activeSectionKey;
     const sectionKey = item.parentId ?? item.section ?? item.id;
     if (this.activeSectionKey !== sectionKey) {
       this.activeSectionKey = sectionKey;
       this.sectionStartedAtMs = nowMs;
     }
     this.scheduleEnforcedTimer(item);
+    void this.evaluateGlobalCuesForActiveItem(item, prevSectionKey);
   }
 
   private scheduleEnforcedTimer(item: ExecutableItem): void {
@@ -873,6 +1005,7 @@ export class RundownEngine {
         display: { lines: [], totalLines: 0, currentLine: null },
         variables: this.variableStore.getAll(),
         cueEngineEnabled: this.cueEngineEnabled,
+        globalCues: this.listGlobalCues(),
         history: [...this.history],
       };
     }
@@ -961,6 +1094,7 @@ export class RundownEngine {
       soundState: this.currentSoundState,
       variables: this.variableStore.getAll(),
       cueEngineEnabled: this.cueEngineEnabled,
+      globalCues: this.listGlobalCues(),
       history: [...this.history],
     };
   }

@@ -160,14 +160,60 @@ export function registerRoutes(app: FastifyInstance, options: RegisterRoutesOpti
     }
   );
 
-  // Cue Engine control: toggle, enable, disable, status
+  // Cue Engine control: toggle, enable, disable, status & Global Cues
   app.get("/api/v1/cues", async () => ({
     enabled: engine.isCueEngineEnabled(),
+    globalCues: engine.listGlobalCues(),
   }));
 
   app.get("/api/v1/rundown/cues", async () => ({
     enabled: engine.isCueEngineEnabled(),
+    globalCues: engine.listGlobalCues(),
   }));
+
+  app.get("/api/v1/cues/global", async () => ({
+    globalCues: engine.listGlobalCues(),
+  }));
+
+  app.post(
+    "/api/v1/cues/global",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const body = (req.body ?? {}) as Record<string, any>;
+        const cue = engine.addGlobalCue(body as any);
+        return { ok: true, cue, globalCues: engine.listGlobalCues() };
+      } catch (err) {
+        return reply.status(422).send({
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  );
+
+  app.post<{ Params: { id: string }; Body?: { enabled?: boolean } }>(
+    "/api/v1/cues/global/:id/toggle",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const cue = engine.toggleGlobalCue(req.params.id, req.body?.enabled);
+      if (!cue) {
+        return reply.status(404).send({ error: `Global cue '${req.params.id}' not found.` });
+      }
+      return { ok: true, cue };
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/api/v1/cues/global/:id",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const removed = engine.removeGlobalCue(req.params.id);
+      if (!removed) {
+        return reply.status(404).send({ error: `Global cue '${req.params.id}' not found.` });
+      }
+      return { ok: true, deleted: true, id: req.params.id };
+    }
+  );
 
   app.post<{ Body?: { enabled?: boolean } }>(
     "/api/v1/cues/toggle",

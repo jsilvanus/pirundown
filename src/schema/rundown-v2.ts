@@ -129,6 +129,7 @@ export const SwitchVideoActionSchema = z.object({
   program: z.union([z.number(), z.string()]).optional(),
   auto: z.boolean().optional(),
   dsk: z.number().optional(),
+  graphic: z.string().optional(),
   state: z.enum(["on", "off", "toggle"]).optional(),
   ftb: z.boolean().optional(),
 });
@@ -145,6 +146,8 @@ export const CamActionSchema = z.object({
   cam: z.object({
     id: z.union([z.number(), z.string()]),
     preset: z.union([z.string(), z.number()]).optional(),
+    cutAfterMoved: z.boolean().optional(),
+    privacyBlur: z.boolean().optional(),
     move: z.enum(["up", "down", "left", "right", "stop"]).optional(),
     speed: z.number().optional(),
     zoom: z.enum(["in", "out", "stop"]).optional(),
@@ -320,6 +323,32 @@ export type RundownItem = {
   items?: RundownItem[];
 };
 
+// --- Global Cue Schema (broadcast-wide reactive cues living alongside item cues) ---
+export const GlobalCueTriggerSchema = z.object({
+  event: z
+    .enum(["section_start", "section_end", "item_start", "phrase", "sound"])
+    .default("section_start"),
+  section: z.string().optional(),
+  itemId: z.string().optional(),
+  phrase: z.string().optional(),
+  soundEvent: z
+    .enum(["music_start", "music_stop", "speech_start", "speech_stop", "silence"])
+    .optional(),
+});
+export type GlobalCueTrigger = z.infer<typeof GlobalCueTriggerSchema>;
+
+export const GlobalCueSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  prompt: z.string().optional(),
+  enabled: z.boolean().default(true),
+  oncePerSection: z.boolean().default(true),
+  trigger: GlobalCueTriggerSchema,
+  actions: z.array(ActionItemSchema).min(1),
+  createdAt: z.string().optional(),
+});
+export type GlobalCue = z.infer<typeof GlobalCueSchema>;
+
 // --- Top-Level Rundown v2 Document ---
 export const PreflightFetchSchema = z.object({
   connector: z.string(),
@@ -343,6 +372,7 @@ export const RundownV2Schema = z.object({
   ai: AiGeneralInstructionsSchema.optional(),
   connectors: z.record(ConnectorDefSchema).optional(),
   preflight: PreflightSchema.optional(),
+  global_cues: z.array(GlobalCueSchema).optional(),
   rundown: z.array(RundownItemSchema).min(1),
 });
 

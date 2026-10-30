@@ -75,3 +75,80 @@ test("API Routes - cue engine toggle and control endpoints", async () => {
 
   await app.close();
 });
+
+test("Global Cues - natural language compilation ('when communion starts, do privacy blur on camera 1') and automatic section execution", async () => {
+  const gatewayCalls: Array<Record<string, any>> = [];
+  const config: AppConfig = {
+    port: 3400,
+    host: "0.0.0.0",
+    pigatewayUrl: "http://gateway.test",
+    picamUrl: "http://cam.test",
+    pilightUrl: "http://light.test",
+    piprogramUrl: "http://pgm.test",
+    autoConnectGateway: false,
+  };
+
+  const { app } = await buildApp(config, {
+    fetchFn: async (url, init) => {
+      if (String(url).includes("/api/v1/actions/execute") && init?.body) {
+        gatewayCalls.push(JSON.parse(String(init.body)));
+      }
+      return new Response(JSON.stringify({ ok: true }));
+    },
+  });
+  await app.ready();
+
+  // 1. Load a rundown with Intro and Communion (Ehtoollinen) sections
+  const loadRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/rundown/load",
+    payload: {
+      yaml: `
+version: 2
+title: Messu
+rundown:
+  - id: alkusoitto
+    title: Alkusoitto
+    section: Johdanto
+    actions: []
+  - id: ehtoollisrukous
+    title: Ehtoollisrukous
+    section: Ehtoollinen
+    actions: []
+`,
+    },
+  });
+  assert.equal(loadRes.statusCode, 200);
+
+  // 2. Register a Global Cue from natural language: "when communion starts, do privacy blur on camera 1"
+  const createCueRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/cues/global",
+    payload: {
+      prompt: "when communion starts, do privacy blur on camera 1",
+    },
+  });
+  assert.equal(createCueRes.statusCode, 200);
+  const createdCue = JSON.parse(createCueRes.payload).cue;
+  assert.equal(createdCue.trigger.event, "section_start");
+  assert.equal(createdCue.trigger.section, "communion");
+  assert.deepEqual(createdCue.actions[0], {
+    cam: { id: 1, privacyBlur: true },
+  });
+
+  // 3. Advance rundown from Johdanto -> Ehtoollinen (communion)
+  const nextRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/rundown/next",
+  });
+  assert.equal(nextRes.statusCode, 200);
+
+  // Allow microtask for async global cue dispatch
+  await new Promise((r) => setTimeout(r, 20));
+
+  const blurCall = gatewayCalls.find((c) => c.action === "cam:privacy_blur");
+  assert.ok(blurCall, "Expected cam:privacy_blur action to be dispatched when communion starts");
+  assert.deepEqual(blurCall.params, { id: 1, enabled: true });
+
+  await app.close();
+});

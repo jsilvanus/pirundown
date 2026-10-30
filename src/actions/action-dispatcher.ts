@@ -95,18 +95,38 @@ export class ActionDispatcher {
           return await this.callGatewayAction({ action: "switch:ftb" });
         }
         if (dsk !== undefined) {
-          return await this.callGatewayAction({ action: "switch:dsk", params: { dskIndex: dsk, state } });
+          return await this.callGatewayAction({
+            action: "switch:dsk",
+            params: {
+              dskIndex: dsk,
+              state: state ?? "on",
+              ...(switchAction.graphic ? { graphic: switchAction.graphic } : {}),
+            },
+          });
         }
       }
 
       if ("cam" in action) {
         const cam = action.cam;
+        if (cam.privacyBlur !== undefined) {
+          return await this.callGatewayAction({
+            action: "cam:privacy_blur",
+            params: { id: cam.id, enabled: cam.privacyBlur },
+          });
+        }
         if (cam.preset !== undefined) {
           const preset = this.interpolateValue(cam.preset);
-          return await this.callGatewayAction({
+          const presetRes = await this.callGatewayAction({
             action: "cam:preset",
-            params: { id: cam.id, preset },
+            params: { id: cam.id, preset, ...(cam.cutAfterMoved ? { cutAfterMoved: true } : {}) },
           });
+          if (cam.cutAfterMoved) {
+            await this.callGatewayAction({
+              action: "switch:cut",
+              params: { input: cam.id, afterCameraMoved: true },
+            });
+          }
+          return presetRes;
         }
         if (cam.move) {
           return await this.callGatewayAction({
