@@ -77,13 +77,16 @@ export class ActionDispatcher {
       if (switchAction) {
         const { cut, preview, program, auto, ftb, dsk, state } = switchAction;
         if (cut !== undefined) {
-          return await this.callGatewayAction({ action: "switch:cut", params: { input: cut } });
+          const input = typeof cut === "string" ? this.variableStore.interpolate(cut) : cut;
+          return await this.callGatewayAction({ action: "switch:cut", params: { input } });
         }
         if (preview !== undefined) {
-          return await this.callGatewayAction({ action: "switch:preview", params: { input: preview } });
+          const input = typeof preview === "string" ? this.variableStore.interpolate(preview) : preview;
+          return await this.callGatewayAction({ action: "switch:preview", params: { input } });
         }
         if (program !== undefined) {
-          return await this.callGatewayAction({ action: "switch:program", params: { input: program } });
+          const input = typeof program === "string" ? this.variableStore.interpolate(program) : program;
+          return await this.callGatewayAction({ action: "switch:program", params: { input } });
         }
         if (auto) {
           return await this.callGatewayAction({ action: "switch:auto" });

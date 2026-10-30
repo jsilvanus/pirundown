@@ -40,6 +40,15 @@ test("ActionDispatcher - dispatches Switch cut and preview via pigateway actions
   const atemResult = await dispatcher.dispatch({ atem: { cut: 4 } });
   assert.equal(atemResult.ok, true);
   assert.deepEqual(calls[2]?.body, { actor: "rundown", action: "switch:cut", params: { input: 4 } });
+
+  // 4. Named camera / phone source
+  const pastorResult = await dispatcher.dispatch({ switch: { preview: "pastorphone" } });
+  assert.equal(pastorResult.ok, true);
+  assert.deepEqual(calls[3]?.body, { actor: "rundown", action: "switch:preview", params: { input: "pastorphone" } });
+
+  const cam1Result = await dispatcher.dispatch({ atem: { cut: "cam1" } });
+  assert.equal(cam1Result.ok, true);
+  assert.deepEqual(calls[4]?.body, { actor: "rundown", action: "switch:cut", params: { input: "cam1" } });
 });
 
 test("ActionDispatcher - dispatches camera preset with variable interpolation via pigateway", async () => {

@@ -103,9 +103,9 @@ export type Cue = z.infer<typeof CueSchema>;
 
 // --- Action Schema ---
 export const SwitchVideoActionSchema = z.object({
-  cut: z.number().optional(),
-  preview: z.number().optional(),
-  program: z.number().optional(),
+  cut: z.union([z.number(), z.string()]).optional(),
+  preview: z.union([z.number(), z.string()]).optional(),
+  program: z.union([z.number(), z.string()]).optional(),
   auto: z.boolean().optional(),
   dsk: z.number().optional(),
   state: z.enum(["on", "off", "toggle"]).optional(),
