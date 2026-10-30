@@ -338,9 +338,11 @@ actions:
 ```
 
 #### Deterministic Action Alternation (`alternate`)
-Cycles actions deterministically on a periodic interval. Pre-roll actions establish initial camera state, then alternation runs until the item ends or advances.
+Cycles actions deterministically on a fixed or randomized periodic interval. Pre-roll actions establish initial camera state, then alternation runs until the item ends or advances.
 
-- `interval_sec` or `interval_ms`: Cycle frequency.
+- `interval_sec` or `interval_ms` (or `interval`):
+  - **Fixed interval**: A single number (e.g. `interval_sec: 10`).
+  - **Randomized interval range**: A two-element array `[min, max]` (e.g. `interval_sec: [10, 20]`). Each alternation cycle dynamically picks a random duration within the range, creating organic broadcast camera pacing.
 - `during`: Audio condition gating:
   - `"any"` (default): Cycles unconditionally.
   - `"speech"`: Cycles only during active speech (pauses when speaker stops).
@@ -359,15 +361,24 @@ Cycles actions deterministically on a periodic interval. Pre-roll actions establ
     - cam: { id: 2, preset: 2 }
     - cut: 1
 
-    # 2. Alternate every 10s between cam 1 and cam 2 ONLY during speech:
+    # 2. Alternate between cam 1 and cam 2 with randomized 10-20s interval during speech:
     - alternate:
-        interval_sec: 10
+        interval_sec: [10, 20] # Random duration between 10s and 20s each cycle
         during: speech
         cut: [1, 2]
 
-# Multi-step action cycle:
+# Multi-step action cycle with fixed interval:
 - id: ehtoollismusiikki
   title: Ehtoollismusiikki
+  actions:
+    - alternate:
+        interval_sec: 15
+        during: music
+        steps:
+          - [{ cut: 3 }]
+          - [{ cam: { id: 1, preset: "kuori" } }, { cut: 1 }]
+          - [{ cut: 2 }]
+```
   actions:
     - alternate:
         interval_sec: 15

@@ -191,3 +191,61 @@ test("Alternation - sound conditions: only during speech and silence", async () 
   assert.equal(rundownEngine.checkSoundCondition("silence"), true);
   assert.equal(rundownEngine.checkSoundCondition("music"), false);
 });
+
+test("Alternation - randomized interval range [10, 20] seconds", async () => {
+  const executedCalls: Array<{ url: string; body?: any }> = [];
+  const mockFetch: typeof fetch = async (url, init) => {
+    executedCalls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+
+  const store = new VariableStore();
+  const engine = new VarfetchEngine(store);
+  const matcher = new CueMatcher();
+  const dispatcher = new ActionDispatcher(
+    { pigatewayUrl: "http://gateway.test" } as any,
+    store,
+    engine,
+    mockFetch
+  );
+  const broker = new RundownEventBroker();
+  const rundownEngine = new RundownEngine(store, engine, matcher, dispatcher, broker);
+
+  await rundownEngine.load({
+    version: 2,
+    title: "Randomized Alternation Test",
+    rundown: [
+      {
+        id: "sermon",
+        title: "Saarna",
+        actions: [
+          {
+            alternate: {
+              interval_sec: [10, 20],
+              during: "speech",
+              cut: [1, 2],
+            },
+          },
+        ],
+      },
+    ],
+  } as any);
+
+  await rundownEngine.fire("sermon");
+  const alternator = rundownEngine.getActiveAlternator();
+  assert.ok(alternator);
+
+  const status = alternator.getStatus();
+  assert.equal(status.active, true);
+  assert.equal(status.minIntervalMs, 10000);
+  assert.equal(status.maxIntervalMs, 20000);
+  assert.equal(status.during, "speech");
+
+  // Display summary shows the range
+  const rundownStatus = rundownEngine.getStatus();
+  const line = rundownStatus.display?.lines.find((l) => l.id === "sermon");
+  assert.ok(line);
+  assert.ok(line.actionsSummary.some((s) => s.includes("10-20s") && s.includes("cut [1, 2]")));
+
+  rundownEngine.reset();
+});

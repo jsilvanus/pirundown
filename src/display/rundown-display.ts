@@ -80,10 +80,21 @@ export function summarizeAction(action: unknown): string {
     }
     if ("alternate" in action) {
       const alt = (action as any).alternate;
-      const sec = alt.interval_sec ?? (alt.interval_ms ? alt.interval_ms / 1000 : alt.interval ?? 10);
+      let secStr = "10s";
+      const parseSec = (v: unknown): string | null => {
+        if (typeof v === "number") return `${v}s`;
+        if (Array.isArray(v) && v.length >= 2) return `${v[0]}-${v[1]}s`;
+        return null;
+      };
+      const parseMs = (v: unknown): string | null => {
+        if (typeof v === "number") return `${v / 1000}s`;
+        if (Array.isArray(v) && v.length >= 2) return `${Number(v[0]) / 1000}-${Number(v[1]) / 1000}s`;
+        return null;
+      };
+      secStr = parseSec(alt.interval_sec) ?? parseMs(alt.interval_ms) ?? parseSec(alt.interval) ?? "10s";
       const cond = alt.during && alt.during !== "any" ? ` during: ${alt.during}` : "";
       const cutStr = alt.cut ? `cut [${alt.cut.join(", ")}]` : `${alt.steps?.length ?? 0} steps`;
-      return `Alternate ${sec}s (${cutStr}${cond})`;
+      return `Alternate ${secStr} (${cutStr}${cond})`;
     }
   }
   return "Action";

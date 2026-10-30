@@ -155,11 +155,17 @@ export const DelayActionSchema = z.object({
   }),
 });
 
+export const IntervalValueSchema = z.union([
+  z.number().positive(),
+  z.tuple([z.number().positive(), z.number().positive()]),
+  z.array(z.number().positive()).min(2).max(2),
+]);
+
 export const AlternateActionSchema = z.object({
   alternate: z.object({
-    interval_sec: z.number().positive().optional(),
-    interval_ms: z.number().positive().optional(),
-    interval: z.number().positive().optional(),
+    interval_sec: IntervalValueSchema.optional(),
+    interval_ms: IntervalValueSchema.optional(),
+    interval: IntervalValueSchema.optional(),
     during: z.enum(["any", "speech", "music", "silence"]).default("any"),
     cut: z.array(z.number()).optional(),
     steps: z.array(z.any()).optional(),
