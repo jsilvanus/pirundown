@@ -155,6 +155,17 @@ export const DelayActionSchema = z.object({
   }),
 });
 
+export const AlternateActionSchema = z.object({
+  alternate: z.object({
+    interval_sec: z.number().positive().optional(),
+    interval_ms: z.number().positive().optional(),
+    interval: z.number().positive().optional(),
+    during: z.enum(["any", "speech", "music", "silence"]).default("any"),
+    cut: z.array(z.number()).optional(),
+    steps: z.array(z.any()).optional(),
+  }),
+});
+
 export const ActionItemSchema = z.union([
   AtemActionSchema,
   CamActionSchema,
@@ -163,6 +174,7 @@ export const ActionItemSchema = z.union([
   VarActionSchema,
   FetchActionSchema,
   DelayActionSchema,
+  AlternateActionSchema,
   z.string(), // Shorthand string syntax, e.g. "cam:1:preset:altar"
 ]);
 

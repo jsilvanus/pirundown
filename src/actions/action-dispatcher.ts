@@ -46,6 +46,10 @@ export class ActionDispatcher {
           await sleep(action.delay.ms);
           return { action, ok: true, target: "delay" };
         }
+
+        if ("alternate" in action) {
+          return { action, ok: true, target: "alternate" };
+        }
       }
 
       if (typeof action === "string") {

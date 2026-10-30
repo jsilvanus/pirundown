@@ -78,6 +78,13 @@ export function summarizeAction(action: unknown): string {
       const entries = Object.entries((action as any).var).map(([k, v]) => `${k}=${v}`).join(", ");
       return `Set ${entries}`;
     }
+    if ("alternate" in action) {
+      const alt = (action as any).alternate;
+      const sec = alt.interval_sec ?? (alt.interval_ms ? alt.interval_ms / 1000 : alt.interval ?? 10);
+      const cond = alt.during && alt.during !== "any" ? ` during: ${alt.during}` : "";
+      const cutStr = alt.cut ? `cut [${alt.cut.join(", ")}]` : `${alt.steps?.length ?? 0} steps`;
+      return `Alternate ${sec}s (${cutStr}${cond})`;
+    }
   }
   return "Action";
 }

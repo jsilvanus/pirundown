@@ -11,6 +11,12 @@ import {
   type ExecutableItem,
   type ItemStatus,
 } from "../display/rundown-display.js";
+import {
+  Alternator,
+  normalizeAlternatorConfig,
+  type AlternatorStatus,
+  type SoundCondition,
+} from "./alternator.js";
 
 export { ItemStatus };
 
@@ -39,6 +45,8 @@ export interface RundownStatusSnapshot {
   currentItem: ItemStateSnapshot | null;
   items: ItemStateSnapshot[];
   display: RundownDisplay;
+  alternation?: AlternatorStatus | null;
+  soundState?: string;
   variables: Record<string, string>;
   cueEngineEnabled: boolean;
   history: Array<{ timestamp: string; type: string; detail: unknown }>;
@@ -51,6 +59,8 @@ export class RundownEngine {
   private readonly history: Array<{ timestamp: string; type: string; detail: unknown }> = [];
   private cueEngineEnabled = true;
   private readonly firedItems = new Set<string>();
+  private activeAlternator: Alternator | null = null;
+  private currentSoundState: "speech" | "music" | "silence" | "unknown" = "unknown";
 
   private readonly variableStore: VariableStore;
   private readonly varfetchEngine: VarfetchEngine;
@@ -81,6 +91,8 @@ export class RundownEngine {
     this.itemStates.clear();
     this.history.length = 0;
     this.firedItems.clear();
+    this.stopAlternator();
+    this.stopAlternator();
 
     // 1. Register connectors
     if (doc.connectors) {
@@ -196,6 +208,7 @@ export class RundownEngine {
   }
 
   async next(): Promise<boolean> {
+    this.stopAlternator();
     if (!this.rundown) return false;
     const { executableItems } = buildRundownDisplay(this.rundown.rundown, this.itemStates, this.currentExecutableId);
     if (executableItems.length === 0) return false;
@@ -222,6 +235,7 @@ export class RundownEngine {
   }
 
   previous(): boolean {
+    this.stopAlternator();
     if (!this.rundown) return false;
     const { executableItems } = buildRundownDisplay(this.rundown.rundown, this.itemStates, this.currentExecutableId);
     if (executableItems.length === 0) return false;
@@ -248,6 +262,7 @@ export class RundownEngine {
   }
 
   goto(id: string): boolean {
+    this.stopAlternator();
     if (!this.rundown) return false;
     const { executableItems, display } = buildRundownDisplay(this.rundown.rundown, this.itemStates, this.currentExecutableId);
 
@@ -279,6 +294,7 @@ export class RundownEngine {
   }
 
   skip(id?: string): boolean {
+    this.stopAlternator();
     if (!this.rundown) return false;
     const { executableItems } = buildRundownDisplay(this.rundown.rundown, this.itemStates, this.currentExecutableId);
 
@@ -431,6 +447,11 @@ export class RundownEngine {
   async onSoundEvent(
     event: "music_start" | "music_stop" | "speech_start" | "speech_stop" | "silence"
   ): Promise<boolean> {
+    if (event === "music_start") this.currentSoundState = "music";
+    else if (event === "music_stop") this.currentSoundState = "silence";
+    else if (event === "speech_start") this.currentSoundState = "speech";
+    else if (event === "speech_stop") this.currentSoundState = "silence";
+    else if (event === "silence") this.currentSoundState = "silence";
     if (!this.cueEngineEnabled) return false;
     if (!this.rundown) return false;
 
@@ -502,6 +523,7 @@ export class RundownEngine {
     item: ExecutableItem,
     reason?: string
   ): Promise<{ ok: boolean; executed: ExecutionResult[] }> {
+    this.stopAlternator();
     const { executableItems, display } = buildRundownDisplay(
       this.rundown?.rundown ?? [],
       this.itemStates,
@@ -560,6 +582,31 @@ export class RundownEngine {
   private async executeItemActions(item: ExecutableItem): Promise<ExecutionResult[]> {
     const results: ExecutionResult[] = [];
     for (const action of item.actions) {
+      if (typeof action === "object" && action !== null && "alternate" in action) {
+        const altConfig = normalizeAlternatorConfig(item.id, (action as any).alternate);
+        if (altConfig) {
+          this.activeAlternator = new Alternator(
+            altConfig,
+            async (stepActions, stepIndex) => {
+              for (const act of stepActions) {
+                await this.actionDispatcher.dispatch(act);
+              }
+              this.eventBroker.emit("alternation_step", {
+                itemId: item.id,
+                stepIndex,
+                actions: stepActions,
+                timestamp: new Date().toISOString(),
+              });
+              this.logHistory("alternation_step", { itemId: item.id, stepIndex, actions: stepActions });
+            },
+            (during) => this.checkSoundCondition(during)
+          );
+          this.activeAlternator.start();
+        }
+        results.push({ action: action as any, ok: true, target: "alternate" });
+        continue;
+      }
+
       const res = await this.actionDispatcher.dispatch(action as any);
       results.push(res);
       this.eventBroker.emit("action_executed", {
@@ -572,6 +619,33 @@ export class RundownEngine {
       this.logHistory("action_executed", { id: item.id, action, ok: res.ok, error: res.error });
     }
     return results;
+  }
+
+  getActiveAlternator(): Alternator | null {
+    return this.activeAlternator;
+  }
+
+  getSoundState(): string {
+    return this.currentSoundState;
+  }
+
+  setSoundState(state: "speech" | "music" | "silence" | "unknown"): void {
+    this.currentSoundState = state;
+  }
+
+  checkSoundCondition(during: SoundCondition): boolean {
+    if (during === "any") return true;
+    if (during === "music") return this.currentSoundState === "music";
+    if (during === "speech") return this.currentSoundState === "speech";
+    if (during === "silence") return this.currentSoundState === "silence";
+    return true;
+  }
+
+  private stopAlternator(): void {
+    if (this.activeAlternator) {
+      this.activeAlternator.stop();
+      this.activeAlternator = null;
+    }
   }
 
   private emitState(): void {
@@ -658,6 +732,8 @@ export class RundownEngine {
       currentItem,
       items,
       display,
+      alternation: this.activeAlternator?.getStatus() ?? null,
+      soundState: this.currentSoundState,
       variables: this.variableStore.getAll(),
       cueEngineEnabled: this.cueEngineEnabled,
       history: [...this.history],
