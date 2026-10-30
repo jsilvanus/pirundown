@@ -390,3 +390,179 @@ test("RundownEngine - items with subitems have numbered display lines and fire c
   assert.equal(status.display.lines[1]?.status, "completed"); // First subitem completed
   assert.equal(status.display.lines[2]?.status, "active"); // Second subitem active
 });
+
+test("RundownEngine - hierarchical progress summary, timing, placeInEvent, and nextItem", async () => {
+  const variableStore = new VariableStore();
+  const varfetchEngine = new VarfetchEngine(variableStore);
+  const cueMatcher = new CueMatcher();
+  const actionDispatcher = new ActionDispatcher(
+    { pigatewayUrl: "http://gateway.test" } as any,
+    variableStore,
+    varfetchEngine,
+    async () => new Response(JSON.stringify({ ok: true }))
+  );
+  const eventBroker = new RundownEventBroker();
+  const engine = new RundownEngine(
+    variableStore,
+    varfetchEngine,
+    cueMatcher,
+    actionDispatcher,
+    eventBroker
+  );
+
+  // Build 15 top-level sections/items where section 3 is "intercession" with 5 subitems,
+  // and subitem 3 is "prayer for dead" (overall executable item 4/18).
+  const rundownItems: any[] = [
+    { id: "sec1", title: "Prelude", duration: "4:00", actions: ["atem:cut:1"] },
+    { id: "sec2", title: "Opening Hymn", duration: "5:00", actions: ["atem:cut:2"] },
+    {
+      id: "sec3_intercession",
+      title: "intercession",
+      duration: "15:00",
+      duration_mode: "advisory",
+      subitems: [
+        { id: "sub1", title: "bidding prayer", duration: "2:00", actions: ["atem:cut:1"] },
+        { id: "sub2", title: "prayer for church", duration: "3:00", actions: ["atem:cut:2"] },
+        {
+          id: "sub3_dead",
+          title: "prayer for dead",
+          duration: "3:03",
+          actions: ["atem:cut:3"],
+        },
+        {
+          id: "sub4_lords_prayer",
+          title: "Lord's Prayer",
+          duration: 5,
+          timer: 10,
+          cue: { type: "phrase", phrase: "Our Father in heaven" },
+          ai: "Hold wide shot during Lord's Prayer",
+          actions: ["atem:cut:1"],
+        },
+        { id: "sub5", title: "blessing", duration: "4:57", actions: ["atem:cut:2"] },
+      ],
+    },
+  ];
+
+  for (let i = 4; i <= 15; i++) {
+    rundownItems.push({
+      id: `sec${i}`,
+      title: `Section ${i}`,
+      duration: "3:00",
+      actions: ["atem:cut:1"],
+    });
+  }
+
+  await engine.load({
+    version: 2,
+    title: "Sunday High Mass",
+    service: "Messu",
+    church: "Keskuskirkko",
+    duration: "1:15:00",
+    rundown: rundownItems,
+  } as any);
+
+  // Jump to sub3_dead ("prayer for dead")
+  engine.goto("sub3_dead");
+  const fixedNow = Date.now();
+  engine.setTimingOffsetsForTest(
+    {
+      serviceElapsedSec: 26 * 60 + 3, // 26:03
+      sectionElapsedSec: 5 * 60,      // 5:00
+      itemElapsedSec: 2 * 60,         // 2:00
+    },
+    fixedNow
+  );
+
+  const status = engine.getStatus(fixedNow);
+  assert.ok(status.progress);
+  assert.equal(status.progress.service.timing, "26:03/1:15:00");
+  assert.equal(status.progress.service.overtime, false);
+  assert.equal(status.progress.section?.place, "3/15");
+  assert.equal(status.progress.section?.title, "intercession");
+  assert.equal(status.progress.section?.timing, "5:00/15:00");
+  assert.equal(status.progress.subsection?.place, "3/5");
+  assert.equal(status.progress.subsection?.title, "prayer for dead");
+  assert.equal(status.progress.subsection?.timing, "2:00/3:03");
+  assert.equal(status.progress.subsection?.overtime, false);
+  assert.equal(
+    status.progress.summary,
+    "Whole service 26:03/1:15:00, currently section 3/15 intercession 5:00/15:00, subsection 3/5 prayer for dead 2:00/3:03"
+  );
+  assert.equal(status.progress.placeInEvent, "5/19 prayer for dead");
+
+  // Verify nextItem is populated with cue, advisory duration: 5, and timer: 10
+  assert.ok(status.nextItem);
+  assert.equal(status.nextItem.id, "sub4_lords_prayer");
+  assert.equal(status.nextItem.title, "Lord's Prayer");
+  assert.equal(status.nextItem.cueSummary, 'Exact: "Our Father in heaven"');
+  assert.equal(status.nextItem.expectedDurationSec, 5);
+  assert.equal(status.nextItem.timerSec, 10);
+  assert.equal(status.nextItem.ai, "Hold wide shot during Lord's Prayer");
+
+  // Jump to sub4_lords_prayer (duration: 5, timer: 10) and simulate 7s elapsed (overtime / red timer before auto-advance at 10s)
+  engine.goto("sub4_lords_prayer");
+  engine.setTimingOffsetsForTest({ itemElapsedSec: 7 }, fixedNow);
+  const overtimeStatus = engine.getStatus(fixedNow);
+  assert.equal(overtimeStatus.progress?.subsection?.timing, "0:07/0:05");
+  assert.equal(overtimeStatus.progress?.subsection?.overtime, true);
+  assert.equal(overtimeStatus.progress?.subsection?.timerSec, 10);
+  // Stop engine timer after test
+  engine.setCueEngineEnabled(false);
+});
+
+test("RundownEngine - timer on active item automatically advances to next item while advisory duration does not", async () => {
+  const variableStore = new VariableStore();
+  const varfetchEngine = new VarfetchEngine(variableStore);
+  const cueMatcher = new CueMatcher();
+  const actionDispatcher = new ActionDispatcher(
+    { pigatewayUrl: "http://gateway.test" } as any,
+    variableStore,
+    varfetchEngine,
+    async () => new Response(JSON.stringify({ ok: true }))
+  );
+  const eventBroker = new RundownEventBroker();
+  const engine = new RundownEngine(
+    variableStore,
+    varfetchEngine,
+    cueMatcher,
+    actionDispatcher,
+    eventBroker
+  );
+
+  await engine.load({
+    version: 2,
+    title: "Timer Auto-Advance Test",
+    rundown: [
+      {
+        id: "item_timed",
+        title: "Timed Intro",
+        duration: 1,
+        timer: 1,
+        cue: { type: "timer", duration_ms: 60 },
+        actions: ["atem:cut:1"],
+      },
+      {
+        id: "item_advisory",
+        title: "Advisory Prayer",
+        duration: 1,
+        actions: ["atem:cut:2"],
+      },
+      {
+        id: "item_final",
+        title: "Final Blessing",
+        actions: ["atem:cut:3"],
+      },
+    ],
+  } as any);
+
+  assert.equal(engine.getStatus().currentItem?.id, "item_timed");
+
+  // Wait for the 60ms timer on item_timed to fire and advance to item_advisory
+  await new Promise((r) => setTimeout(r, 140));
+  const afterTimer = engine.getStatus();
+  assert.equal(afterTimer.currentItem?.id, "item_advisory");
+
+  // Confirm advisory item does not auto-advance
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(engine.getStatus().currentItem?.id, "item_advisory");
+});

@@ -1,3 +1,9 @@
+import {
+  formatDurationSec,
+  parseDurationSec,
+  parseTimerSec,
+} from "../schema/rundown-v2.js";
+
 export type ItemStatus = "pending" | "active" | "completed" | "skipped";
 export type DisplayLineType = "section" | "item" | "subitem";
 
@@ -18,6 +24,9 @@ export interface DisplayLine {
   targetId: string;          // The executable item ID triggered when this line is fired
   targetLine: number;        // The display line number of the executable item
   isExecutable: boolean;     // True for items and subitems with actions/cues
+  expectedDurationSec?: number | null | undefined;
+  timerSec?: number | null | undefined;
+  ai?: unknown | undefined;
 }
 
 export interface RundownDisplay {
@@ -34,8 +43,12 @@ export interface ExecutableItem {
   section?: string | undefined;
   notes?: string | undefined;
   cue?: unknown | undefined;
+  cueSummary?: string | undefined;
   actions: unknown[];
   parentId?: string | undefined;
+  expectedDurationSec?: number | null | undefined;
+  timerSec?: number | null | undefined;
+  ai?: unknown | undefined;
 }
 
 export function summarizeAction(action: unknown): string {
@@ -114,6 +127,12 @@ export function summarizeCue(cue: unknown): string | undefined {
   if (c.type === "semantic") return `Semantic: "${c.phrase ?? ""}"`;
   if (c.type === "phrase") return `Exact: "${c.phrase ?? ""}"`;
   if (c.type === "regex") return `Regex: /${c.pattern ?? ""}/`;
+  if (c.type === "timer") {
+    const sec =
+      parseDurationSec(c.duration, c.duration_sec) ??
+      (typeof c.duration_ms === "number" ? Math.round(c.duration_ms / 1000) : null);
+    return sec !== null ? `Timer: ${formatDurationSec(sec)}` : "Timer";
+  }
   if (c.type === "manual") return `Manual`;
   return String(c.type ?? "Cue");
 }
@@ -145,6 +164,10 @@ export function buildRundownDisplay(
       const secName = String(item.section ?? item.title ?? "Section");
       currentSection = secName;
       const secId = item.id ? String(item.id) : `sec_${secName.toLowerCase().replace(/[^a-z0-9_]+/g, "_")}`;
+      const secExpectedSec = parseDurationSec(
+        item.duration ?? item.expected_duration,
+        item.duration_sec
+      );
 
       lines.push({
         line: lineCounter++,
@@ -161,6 +184,8 @@ export function buildRundownDisplay(
         targetId: "", // resolved after items are added
         targetLine: 0,
         isExecutable: false,
+        expectedDurationSec: secExpectedSec,
+        ai: item.ai,
       });
 
       // If the section object has nested items array
@@ -202,6 +227,15 @@ export function buildRundownDisplay(
     const itemActions: unknown[] = Array.isArray(item.actions) ? item.actions : [];
     const hasSubitems = Array.isArray(item.subitems) && item.subitems.length > 0;
     const isExecutable = !hasSubitems || itemActions.length > 0;
+    const itemExpectedSec = parseDurationSec(
+      item.duration ?? item.expected_duration,
+      item.duration_sec
+    );
+    const itemTimerSec = parseTimerSec(item.timer, item.cue, itemExpectedSec);
+    const baseCueSummary = summarizeCue(item.cue);
+    const itemCueSummary =
+      baseCueSummary ??
+      (itemTimerSec !== null ? `Timer: ${formatDurationSec(itemTimerSec)}` : undefined);
 
     const itemLineNum = lineCounter++;
     const itemLine: DisplayLine = {
@@ -214,13 +248,16 @@ export function buildRundownDisplay(
       section: sectionName,
       notes: item.notes,
       status: itemStates.get(itemId) ?? "pending",
-      hasCue: Boolean(item.cue),
-      cueSummary: summarizeCue(item.cue),
+      hasCue: Boolean(item.cue) || itemTimerSec !== null,
+      cueSummary: itemCueSummary,
       actionCount: itemActions.length,
       actionsSummary: itemActions.map(summarizeAction),
       targetId: itemId,
       targetLine: itemLineNum,
       isExecutable,
+      expectedDurationSec: itemExpectedSec,
+      timerSec: itemTimerSec,
+      ai: item.ai,
     };
     lines.push(itemLine);
 
@@ -232,8 +269,12 @@ export function buildRundownDisplay(
         section: sectionName,
         notes: item.notes,
         cue: item.cue,
+        cueSummary: itemCueSummary,
         actions: itemActions,
         parentId: parentSectionId,
+        expectedDurationSec: itemExpectedSec,
+        timerSec: itemTimerSec,
+        ai: item.ai,
       });
     }
 
@@ -246,6 +287,15 @@ export function buildRundownDisplay(
         const subId = String(sub.id ?? `${itemId}_sub_${lineCounter}`);
         const subActions: unknown[] = Array.isArray(sub.actions) ? sub.actions : [];
         const subLineNum = lineCounter++;
+        const subExpectedSec = parseDurationSec(
+          sub.duration ?? sub.expected_duration,
+          sub.duration_sec
+        );
+        const subTimerSec = parseTimerSec(sub.timer, sub.cue, subExpectedSec);
+        const subBaseCueSummary = summarizeCue(sub.cue);
+        const subCueSummary =
+          subBaseCueSummary ??
+          (subTimerSec !== null ? `Timer: ${formatDurationSec(subTimerSec)}` : undefined);
 
         if (firstSubitemLine === null) {
           firstSubitemLine = subLineNum;
@@ -262,13 +312,16 @@ export function buildRundownDisplay(
           section: sectionName,
           notes: sub.notes,
           status: itemStates.get(subId) ?? "pending",
-          hasCue: Boolean(sub.cue),
-          cueSummary: summarizeCue(sub.cue),
+          hasCue: Boolean(sub.cue) || subTimerSec !== null,
+          cueSummary: subCueSummary,
           actionCount: subActions.length,
           actionsSummary: subActions.map(summarizeAction),
           targetId: subId,
           targetLine: subLineNum,
           isExecutable: true,
+          expectedDurationSec: subExpectedSec,
+          timerSec: subTimerSec,
+          ai: sub.ai ?? item.ai,
         };
         lines.push(subLine);
 
@@ -279,8 +332,12 @@ export function buildRundownDisplay(
           section: sectionName,
           notes: sub.notes,
           cue: sub.cue,
+          cueSummary: subCueSummary,
           actions: subActions,
           parentId: itemId,
+          expectedDurationSec: subExpectedSec,
+          timerSec: subTimerSec,
+          ai: sub.ai ?? item.ai,
         });
       }
 
@@ -323,6 +380,12 @@ export function buildRundownDisplay(
         childLines.push(lines[j]!);
       }
       if (childLines.length > 0) {
+        if (line.expectedDurationSec === null || line.expectedDurationSec === undefined) {
+          const sum = childLines
+            .filter((c) => c.isExecutable && typeof c.expectedDurationSec === "number")
+            .reduce((acc, c) => acc + (c.expectedDurationSec ?? 0), 0);
+          if (sum > 0) line.expectedDurationSec = sum;
+        }
         if (childLines.some((c) => c.status === "active")) {
           line.status = "active";
         } else if (childLines.every((c) => c.status === "completed" || c.status === "skipped")) {
@@ -337,6 +400,12 @@ export function buildRundownDisplay(
       // Parent container item with subitems
       const subLines = lines.filter((l) => l.parentId === line.id && l.type === "subitem");
       if (subLines.length > 0) {
+        if (line.expectedDurationSec === null || line.expectedDurationSec === undefined) {
+          const sum = subLines
+            .filter((s) => typeof s.expectedDurationSec === "number")
+            .reduce((acc, s) => acc + (s.expectedDurationSec ?? 0), 0);
+          if (sum > 0) line.expectedDurationSec = sum;
+        }
         if (subLines.some((s) => s.status === "active")) {
           line.status = "active";
         } else if (subLines.every((s) => s.status === "completed" || s.status === "skipped")) {

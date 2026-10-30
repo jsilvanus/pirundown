@@ -81,6 +81,17 @@ export const ManualCueSchema = BaseCueSchema.extend({
   type: z.literal("manual"),
 });
 
+export const DurationValueSchema = z.union([z.number().nonnegative(), z.string().min(1)]);
+export type DurationValue = z.infer<typeof DurationValueSchema>;
+
+export const TimerCueSchema = BaseCueSchema.extend({
+  type: z.literal("timer"),
+  timer: DurationValueSchema.optional(),
+  duration: DurationValueSchema.optional(),
+  duration_sec: z.number().nonnegative().optional(),
+  duration_ms: z.number().nonnegative().optional(),
+});
+
 export const SingleCueSchema = z.discriminatedUnion("type", [
   PhraseCueSchema,
   FuzzyCueSchema,
@@ -88,6 +99,7 @@ export const SingleCueSchema = z.discriminatedUnion("type", [
   RegexCueSchema,
   SoundCueSchema,
   ManualCueSchema,
+  TimerCueSchema,
 ]);
 
 export type SingleCue = z.infer<typeof SingleCueSchema>;
@@ -263,6 +275,10 @@ export const RundownSubitemSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   notes: z.string().optional(),
+  duration: DurationValueSchema.optional(),
+  expected_duration: DurationValueSchema.optional(),
+  duration_sec: z.number().nonnegative().optional(),
+  timer: DurationValueSchema.optional(),
   ai: AiItemInstructionsSchema.optional(),
   cue: CueSchema.optional(),
   actions: z.array(ActionItemSchema).default([]),
@@ -276,6 +292,10 @@ export const RundownItemSchema: z.ZodType<any> = z.lazy(() =>
     title: z.string().min(1).optional(),
     section: z.string().optional(),
     notes: z.string().optional(),
+    duration: DurationValueSchema.optional(),
+    expected_duration: DurationValueSchema.optional(),
+    duration_sec: z.number().nonnegative().optional(),
+    timer: DurationValueSchema.optional(),
     ai: AiItemInstructionsSchema.optional(),
     cue: CueSchema.optional(),
     actions: z.array(ActionItemSchema).default([]),
@@ -289,6 +309,10 @@ export type RundownItem = {
   title?: string;
   section?: string;
   notes?: string;
+  duration?: DurationValue;
+  expected_duration?: DurationValue;
+  duration_sec?: number;
+  timer?: DurationValue;
   ai?: AiItemInstructions;
   cue?: Cue;
   actions: ActionItem[];
@@ -313,6 +337,9 @@ export const RundownV2Schema = z.object({
   service: z.string().optional(),
   church: z.string().optional(),
   date: z.string().optional(),
+  duration: DurationValueSchema.optional(),
+  expected_duration: DurationValueSchema.optional(),
+  duration_sec: z.number().nonnegative().optional(),
   ai: AiGeneralInstructionsSchema.optional(),
   connectors: z.record(ConnectorDefSchema).optional(),
   preflight: PreflightSchema.optional(),
@@ -320,3 +347,93 @@ export const RundownV2Schema = z.object({
 });
 
 export type RundownV2 = z.infer<typeof RundownV2Schema>;
+
+/**
+ * Parses duration values like "1:15:00", "15:00", "3:03", "15m", "90s", or numeric seconds into seconds.
+ */
+export function parseDurationSec(
+  val?: string | number | null,
+  fallbackSec?: number | null
+): number | null {
+  if (typeof val === "number" && !Number.isNaN(val)) {
+    return Math.max(0, Math.round(val));
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (trimmed.includes(":")) {
+      const parts = trimmed.split(":").map((p) => Number.parseInt(p.trim(), 10));
+      if (parts.every((n) => !Number.isNaN(n))) {
+        if (parts.length === 3) {
+          return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+        }
+        if (parts.length === 2) {
+          return parts[0]! * 60 + parts[1]!;
+        }
+      }
+    }
+    const unitMatch = /^(\d+(?:\.\d+)?)\s*(h|m|min|s|sec)?$/i.exec(trimmed);
+    if (unitMatch) {
+      const num = Number.parseFloat(unitMatch[1]!);
+      const unit = (unitMatch[2] ?? "s").toLowerCase();
+      if (unit === "h") return Math.round(num * 3600);
+      if (unit === "m" || unit === "min") return Math.round(num * 60);
+      return Math.round(num);
+    }
+  }
+  if (typeof fallbackSec === "number" && !Number.isNaN(fallbackSec)) {
+    return Math.max(0, Math.round(fallbackSec));
+  }
+  return null;
+}
+
+/**
+ * Formats seconds into M:SS (e.g. "5:00", "26:03") or H:MM:SS (e.g. "1:15:00").
+ */
+export function formatDurationSec(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  const hrs = Math.floor(safe / 3600);
+  const mins = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  const secStr = String(secs).padStart(2, "0");
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, "0")}:${secStr}`;
+  }
+  return `${mins}:${secStr}`;
+}
+
+export function formatTimingPair(elapsedSec: number, expectedSec?: number | null): string {
+  const el = formatDurationSec(elapsedSec);
+  if (expectedSec !== undefined && expectedSec !== null && expectedSec > 0) {
+    return `${el}/${formatDurationSec(expectedSec)}`;
+  }
+  return el;
+}
+
+/**
+ * Resolves an item's auto-advance timer in seconds from either `item.timer` (number or "M:SS"/"H:MM:SS")
+ * or `item.cue` (`{ type: "timer", ... }`).
+ */
+export function parseTimerSec(
+  timerVal?: string | number | null,
+  cue?: unknown,
+  fallbackDurationSec?: number | null
+): number | null {
+  const direct = parseDurationSec(timerVal);
+  if (direct !== null && direct > 0) {
+    return direct;
+  }
+  const cueObj = cue as Record<string, any> | undefined;
+  if (cueObj && cueObj.type === "timer") {
+    if (typeof cueObj.duration_ms === "number" && cueObj.duration_ms > 0) {
+      return Math.max(1, Math.round(cueObj.duration_ms / 1000));
+    }
+    const cueSec =
+      parseDurationSec(cueObj.timer ?? cueObj.duration, cueObj.duration_sec) ??
+      fallbackDurationSec ??
+      null;
+    if (cueSec !== null && cueSec > 0) {
+      return cueSec;
+    }
+  }
+  return null;
+}

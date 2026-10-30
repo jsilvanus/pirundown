@@ -350,6 +350,14 @@ export class CueMatcher {
           reason: matched ? `Sound event '${cue.event}' detected` : `Expected '${cue.event}', got '${ctx.soundEvent}'`,
         };
       }
+
+      case "timer": {
+        return {
+          matched: false,
+          score: 0.0,
+          reason: "Timer cues are evaluated by the rundown duration scheduler",
+        };
+      }
     }
   }
 

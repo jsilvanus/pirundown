@@ -1,4 +1,10 @@
-import type { RundownV2, RundownItem } from "../schema/rundown-v2.js";
+import {
+  formatDurationSec,
+  formatTimingPair,
+  parseDurationSec,
+  type RundownV2,
+  type RundownItem,
+} from "../schema/rundown-v2.js";
 import type { VariableStore } from "../variables/variable-store.js";
 import type { VarfetchEngine } from "../variables/varfetch-engine.js";
 import type { CueMatcher } from "../cues/cue-matcher.js";
@@ -28,8 +34,59 @@ export interface ItemStateSnapshot {
   section?: string | undefined;
   status: ItemStatus;
   hasCue: boolean;
+  cueSummary?: string | undefined;
   actionCount: number;
   notes?: string | undefined;
+  expectedDurationSec?: number | null | undefined;
+  timerSec?: number | null | undefined;
+}
+
+export interface NextItemSnapshot {
+  id: string;
+  line: number;
+  index: number;
+  title: string;
+  section?: string | undefined;
+  cueSummary?: string | undefined;
+  cue?: unknown | undefined;
+  expectedDurationSec?: number | null | undefined;
+  timerSec?: number | null | undefined;
+  ai?: unknown | undefined;
+}
+
+export interface RundownProgressSnapshot {
+  placeInEvent: string;
+  service: {
+    elapsedSec: number;
+    expectedDurationSec: number | null;
+    timing: string;
+    overtime: boolean;
+  };
+  section: {
+    index: number;
+    total: number;
+    place: string;
+    id: string;
+    title: string;
+    elapsedSec: number;
+    expectedDurationSec: number | null;
+    timerSec: number | null;
+    timing: string;
+    overtime: boolean;
+  } | null;
+  subsection: {
+    index: number;
+    total: number;
+    place: string;
+    id: string;
+    title: string;
+    elapsedSec: number;
+    expectedDurationSec: number | null;
+    timerSec: number | null;
+    timing: string;
+    overtime: boolean;
+  } | null;
+  summary: string;
 }
 
 export interface RundownStatusSnapshot {
@@ -43,6 +100,8 @@ export interface RundownStatusSnapshot {
   totalItems: number;
   totalLines: number;
   currentItem: ItemStateSnapshot | null;
+  nextItem?: NextItemSnapshot | null | undefined;
+  progress?: RundownProgressSnapshot | null | undefined;
   items: ItemStateSnapshot[];
   display: RundownDisplay;
   alternation?: AlternatorStatus | null;
@@ -60,7 +119,13 @@ export class RundownEngine {
   private cueEngineEnabled = true;
   private readonly firedItems = new Set<string>();
   private activeAlternator: Alternator | null = null;
+  private enforcedTimer: NodeJS.Timeout | null = null;
   private currentSoundState: "speech" | "music" | "silence" | "unknown" = "unknown";
+
+  private serviceStartedAtMs: number = Date.now();
+  private sectionStartedAtMs: number = Date.now();
+  private itemStartedAtMs: number = Date.now();
+  private activeSectionKey: string | null = null;
 
   private readonly variableStore: VariableStore;
   private readonly varfetchEngine: VarfetchEngine;
@@ -127,9 +192,16 @@ export class RundownEngine {
     }
 
     // 5. Activate first executable item
+    const nowMs = Date.now();
+    this.serviceStartedAtMs = nowMs;
+    this.sectionStartedAtMs = nowMs;
+    this.itemStartedAtMs = nowMs;
+    this.activeSectionKey = null;
+
     if (executableItems.length > 0 && executableItems[0]) {
       this.currentExecutableId = executableItems[0].id;
       this.itemStates.set(executableItems[0].id, "active");
+      this.onActiveItemChanged(executableItems[0], nowMs);
     } else {
       this.currentExecutableId = null;
     }
@@ -141,20 +213,44 @@ export class RundownEngine {
   reset(): void {
     if (!this.rundown) return;
     this.firedItems.clear();
+    this.stopAlternator();
 
     const { executableItems } = buildRundownDisplay(this.rundown.rundown, this.itemStates);
     for (const item of executableItems) {
       this.itemStates.set(item.id, "pending");
     }
 
+    const nowMs = Date.now();
+    this.serviceStartedAtMs = nowMs;
+    this.sectionStartedAtMs = nowMs;
+    this.itemStartedAtMs = nowMs;
+    this.activeSectionKey = null;
+
     if (executableItems.length > 0 && executableItems[0]) {
       this.currentExecutableId = executableItems[0].id;
       this.itemStates.set(executableItems[0].id, "active");
+      this.onActiveItemChanged(executableItems[0], nowMs);
     } else {
       this.currentExecutableId = null;
     }
 
     this.emitState();
+  }
+
+  setTimingOffsetsForTest(offsets: {
+    serviceElapsedSec?: number;
+    sectionElapsedSec?: number;
+    itemElapsedSec?: number;
+  }, nowMs = Date.now()): void {
+    if (offsets.serviceElapsedSec !== undefined) {
+      this.serviceStartedAtMs = nowMs - offsets.serviceElapsedSec * 1000;
+    }
+    if (offsets.sectionElapsedSec !== undefined) {
+      this.sectionStartedAtMs = nowMs - offsets.sectionElapsedSec * 1000;
+    }
+    if (offsets.itemElapsedSec !== undefined) {
+      this.itemStartedAtMs = nowMs - offsets.itemElapsedSec * 1000;
+    }
   }
 
   isCueEngineEnabled(): boolean {
@@ -164,6 +260,13 @@ export class RundownEngine {
   setCueEngineEnabled(enabled: boolean): boolean {
     if (this.cueEngineEnabled !== enabled) {
       this.cueEngineEnabled = enabled;
+      const current = this.getCurrentExecutableItem();
+      if (enabled && current) {
+        this.scheduleEnforcedTimer(current);
+      } else if (!enabled && this.enforcedTimer) {
+        clearTimeout(this.enforcedTimer);
+        this.enforcedTimer = null;
+      }
       this.logHistory("cue_engine_toggled", { enabled });
       this.eventBroker.emit("cue_engine_toggled", { enabled });
       this.emitState();
@@ -232,6 +335,7 @@ export class RundownEngine {
     if (nextIdx < executableItems.length && executableItems[nextIdx]) {
       this.currentExecutableId = executableItems[nextIdx]!.id;
       this.itemStates.set(executableItems[nextIdx]!.id, "active");
+      this.onActiveItemChanged(executableItems[nextIdx]!);
       this.emitState();
       return true;
     } else {
@@ -261,6 +365,7 @@ export class RundownEngine {
     if (prevIdx >= 0 && executableItems[prevIdx]) {
       this.currentExecutableId = executableItems[prevIdx]!.id;
       this.itemStates.set(executableItems[prevIdx]!.id, "active");
+      this.onActiveItemChanged(executableItems[prevIdx]!);
       this.emitState();
       return true;
     }
@@ -296,6 +401,7 @@ export class RundownEngine {
     });
 
     this.currentExecutableId = targetExec.id;
+    this.onActiveItemChanged(targetExec);
     this.emitState();
     return true;
   }
@@ -319,6 +425,7 @@ export class RundownEngine {
       if (idx + 1 < executableItems.length && executableItems[idx + 1]) {
         this.currentExecutableId = executableItems[idx + 1]!.id;
         this.itemStates.set(executableItems[idx + 1]!.id, "active");
+        this.onActiveItemChanged(executableItems[idx + 1]!);
       } else {
         this.currentExecutableId = null;
       }
@@ -586,6 +693,7 @@ export class RundownEngine {
 
     this.currentExecutableId = item.id;
     this.firedItems.add(item.id);
+    this.onActiveItemChanged(item);
 
     // Find display line number for this item
     const displayLine = display.lines.find((l) => l.id === item.id) ?? display.lines.find((l) => l.targetId === item.id);
@@ -679,6 +787,59 @@ export class RundownEngine {
       this.activeAlternator.stop();
       this.activeAlternator = null;
     }
+    if (this.enforcedTimer) {
+      clearTimeout(this.enforcedTimer);
+      this.enforcedTimer = null;
+    }
+  }
+
+  private onActiveItemChanged(item: ExecutableItem, nowMs = Date.now()): void {
+    this.itemStartedAtMs = nowMs;
+    const sectionKey = item.parentId ?? item.section ?? item.id;
+    if (this.activeSectionKey !== sectionKey) {
+      this.activeSectionKey = sectionKey;
+      this.sectionStartedAtMs = nowMs;
+    }
+    this.scheduleEnforcedTimer(item);
+  }
+
+  private scheduleEnforcedTimer(item: ExecutableItem): void {
+    if (this.enforcedTimer) {
+      clearTimeout(this.enforcedTimer);
+      this.enforcedTimer = null;
+    }
+    if (!this.cueEngineEnabled || !this.rundown) return;
+
+    const cueObj = item.cue as Record<string, any> | undefined;
+    let durationMs = 0;
+    if (cueObj?.type === "timer" && typeof cueObj.duration_ms === "number" && cueObj.duration_ms > 0) {
+      durationMs = cueObj.duration_ms;
+    } else if (typeof item.timerSec === "number" && item.timerSec > 0) {
+      durationMs = item.timerSec * 1000;
+    }
+
+    if (durationMs <= 0) return;
+
+    const activeId = item.id;
+    this.enforcedTimer = setTimeout(() => {
+      this.enforcedTimer = null;
+      if (!this.cueEngineEnabled || !this.rundown || this.currentExecutableId !== activeId) return;
+      const latest = buildRundownDisplay(
+        this.rundown.rundown,
+        this.itemStates,
+        this.currentExecutableId
+      );
+      const curIdx = latest.executableItems.findIndex((it) => it.id === activeId);
+      const targetNext =
+        curIdx >= 0 && curIdx + 1 < latest.executableItems.length
+          ? latest.executableItems[curIdx + 1]
+          : null;
+      if (targetNext) {
+        void this.fireExecutableItem(targetNext, `timer:${activeId}`);
+      } else {
+        void this.next();
+      }
+    }, durationMs);
   }
 
   private emitState(): void {
@@ -697,7 +858,7 @@ export class RundownEngine {
     }
   }
 
-  getStatus(): RundownStatusSnapshot {
+  getStatus(nowMs = Date.now()): RundownStatusSnapshot {
     if (!this.rundown) {
       return {
         loaded: false,
@@ -706,6 +867,8 @@ export class RundownEngine {
         totalItems: 0,
         totalLines: 0,
         currentItem: null,
+        nextItem: null,
+        progress: null,
         items: [],
         display: { lines: [], totalLines: 0, currentLine: null },
         variables: this.variableStore.getAll(),
@@ -725,6 +888,10 @@ export class RundownEngine {
       : -1;
 
     const currentExec = execIndex >= 0 ? executableItems[execIndex] ?? null : null;
+    const nextExec =
+      execIndex >= 0 && execIndex + 1 < executableItems.length
+        ? executableItems[execIndex + 1] ?? null
+        : null;
 
     const currentItem: ItemStateSnapshot | null = currentExec
       ? {
@@ -734,9 +901,27 @@ export class RundownEngine {
           title: currentExec.title,
           section: currentExec.section,
           status: this.itemStates.get(currentExec.id) ?? "pending",
-          hasCue: Boolean(currentExec.cue),
+          hasCue: Boolean(currentExec.cue) || currentExec.timerSec !== null,
+          cueSummary: currentExec.cueSummary,
           actionCount: currentExec.actions.length,
           notes: currentExec.notes,
+          expectedDurationSec: currentExec.expectedDurationSec,
+          timerSec: currentExec.timerSec,
+        }
+      : null;
+
+    const nextItem: NextItemSnapshot | null = nextExec
+      ? {
+          id: nextExec.id,
+          line: nextExec.line,
+          index: execIndex + 1,
+          title: nextExec.title,
+          section: nextExec.section,
+          cueSummary: nextExec.cueSummary,
+          cue: nextExec.cue,
+          expectedDurationSec: nextExec.expectedDurationSec,
+          timerSec: nextExec.timerSec,
+          ai: nextExec.ai,
         }
       : null;
 
@@ -747,10 +932,15 @@ export class RundownEngine {
       title: it.title,
       section: it.section,
       status: this.itemStates.get(it.id) ?? "pending",
-      hasCue: Boolean(it.cue),
+      hasCue: Boolean(it.cue) || it.timerSec !== null,
+      cueSummary: it.cueSummary,
       actionCount: it.actions.length,
       notes: it.notes,
+      expectedDurationSec: it.expectedDurationSec,
+      timerSec: it.timerSec,
     }));
+
+    const progress = this.buildProgressSnapshot(display, executableItems, execIndex, nowMs);
 
     return {
       loaded: true,
@@ -763,6 +953,8 @@ export class RundownEngine {
       totalItems: executableItems.length,
       totalLines: display.totalLines,
       currentItem,
+      nextItem,
+      progress,
       items,
       display,
       alternation: this.activeAlternator?.getStatus() ?? null,
@@ -770,6 +962,135 @@ export class RundownEngine {
       variables: this.variableStore.getAll(),
       cueEngineEnabled: this.cueEngineEnabled,
       history: [...this.history],
+    };
+  }
+
+  private buildProgressSnapshot(
+    display: RundownDisplay,
+    executableItems: ExecutableItem[],
+    execIndex: number,
+    nowMs: number
+  ): RundownProgressSnapshot {
+    const doc = this.rundown!;
+    const currentExec = execIndex >= 0 ? executableItems[execIndex] ?? null : null;
+
+    // 1. Whole Service timing
+    const serviceElapsedSec = Math.max(0, Math.floor((nowMs - this.serviceStartedAtMs) / 1000));
+    let serviceExpectedSec = parseDurationSec(
+      doc.duration ?? doc.expected_duration,
+      doc.duration_sec
+    );
+    if (serviceExpectedSec === null) {
+      const sum = executableItems
+        .filter((it) => typeof it.expectedDurationSec === "number")
+        .reduce((acc, it) => acc + (it.expectedDurationSec ?? 0), 0);
+      if (sum > 0) serviceExpectedSec = sum;
+    }
+    const serviceTiming = formatTimingPair(serviceElapsedSec, serviceExpectedSec);
+    const serviceOvertime = serviceExpectedSec !== null && serviceElapsedSec > serviceExpectedSec;
+
+    const placeNum = execIndex >= 0 ? execIndex + 1 : 0;
+    const placeInEvent = currentExec
+      ? `${placeNum}/${executableItems.length} ${currentExec.title}`
+      : `0/${executableItems.length}`;
+
+    // 2. Top-level items / sections & Subitems
+    const topLevelLines = display.lines.filter(
+      (l) => l.type === "item" || (l.type === "section" && !display.lines.some((c) => c.parentId === l.id))
+    );
+    const itemLines = display.lines.filter((l) => l.type === "item");
+    const sectionPool = itemLines.length > 0 ? itemLines : topLevelLines;
+
+    let sectionSnap: RundownProgressSnapshot["section"] = null;
+    let subsectionSnap: RundownProgressSnapshot["subsection"] = null;
+
+    if (currentExec) {
+      const activeLine = display.lines.find((l) => l.id === currentExec.id);
+      const sectionElapsedSec = Math.max(0, Math.floor((nowMs - this.sectionStartedAtMs) / 1000));
+      const itemElapsedSec = Math.max(0, Math.floor((nowMs - this.itemStartedAtMs) / 1000));
+
+      if (activeLine?.type === "subitem" && activeLine.parentId) {
+        // Parent item is the "section", subitem is the "subsection"
+        const parentIdx = sectionPool.findIndex((l) => l.id === activeLine.parentId);
+        const parentLine = parentIdx >= 0 ? sectionPool[parentIdx]! : null;
+        if (parentLine) {
+          const secPlace = `${parentIdx + 1}/${sectionPool.length}`;
+          const secExpected = parentLine.expectedDurationSec ?? null;
+          sectionSnap = {
+            index: parentIdx + 1,
+            total: sectionPool.length,
+            place: secPlace,
+            id: parentLine.id,
+            title: parentLine.title,
+            elapsedSec: sectionElapsedSec,
+            expectedDurationSec: secExpected,
+            timerSec: parentLine.timerSec ?? null,
+            timing: formatTimingPair(sectionElapsedSec, secExpected),
+            overtime: secExpected !== null && sectionElapsedSec > secExpected,
+          };
+        }
+
+        const siblingSubitems = display.lines.filter(
+          (l) => l.type === "subitem" && l.parentId === activeLine.parentId
+        );
+        const subIdx = siblingSubitems.findIndex((l) => l.id === activeLine.id);
+        const subPlace = `${subIdx >= 0 ? subIdx + 1 : 1}/${siblingSubitems.length}`;
+        const subExpected = activeLine.expectedDurationSec ?? null;
+        subsectionSnap = {
+          index: subIdx >= 0 ? subIdx + 1 : 1,
+          total: siblingSubitems.length,
+          place: subPlace,
+          id: activeLine.id,
+          title: activeLine.title,
+          elapsedSec: itemElapsedSec,
+          expectedDurationSec: subExpected,
+          timerSec: activeLine.timerSec ?? null,
+          timing: formatTimingPair(itemElapsedSec, subExpected),
+          overtime: subExpected !== null && itemElapsedSec > subExpected,
+        };
+      } else if (activeLine) {
+        // Active line is a top-level item
+        const secIdx = sectionPool.findIndex((l) => l.id === activeLine.id);
+        const secPlace = `${secIdx >= 0 ? secIdx + 1 : 1}/${sectionPool.length}`;
+        const secExpected = activeLine.expectedDurationSec ?? null;
+        sectionSnap = {
+          index: secIdx >= 0 ? secIdx + 1 : 1,
+          total: sectionPool.length,
+          place: secPlace,
+          id: activeLine.id,
+          title: activeLine.title,
+          elapsedSec: itemElapsedSec,
+          expectedDurationSec: secExpected,
+          timerSec: activeLine.timerSec ?? null,
+          timing: formatTimingPair(itemElapsedSec, secExpected),
+          overtime: secExpected !== null && itemElapsedSec > secExpected,
+        };
+      }
+    }
+
+    const parts: string[] = [`Whole service ${serviceTiming}`];
+    if (sectionSnap) {
+      parts.push(
+        `currently section ${sectionSnap.place} ${sectionSnap.title} ${sectionSnap.timing}`
+      );
+    }
+    if (subsectionSnap) {
+      parts.push(
+        `subsection ${subsectionSnap.place} ${subsectionSnap.title} ${subsectionSnap.timing}`
+      );
+    }
+
+    return {
+      placeInEvent,
+      service: {
+        elapsedSec: serviceElapsedSec,
+        expectedDurationSec: serviceExpectedSec,
+        timing: serviceTiming,
+        overtime: serviceOvertime,
+      },
+      section: sectionSnap,
+      subsection: subsectionSnap,
+      summary: parts.join(", "),
     };
   }
 }
