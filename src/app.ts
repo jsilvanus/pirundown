@@ -28,7 +28,10 @@ export async function buildApp(config: AppConfig, options?: { fetchFn?: typeof f
 
   const variableStore = new VariableStore();
   const varfetchEngine = new VarfetchEngine(variableStore);
-  const cueMatcher = new CueMatcher();
+  const cueMatcher = new CueMatcher({
+    piembedUrl: config.piembedUrl,
+    fetchFn: options?.fetchFn,
+  });
   const actionDispatcher = new ActionDispatcher(config, variableStore, varfetchEngine, options?.fetchFn);
   const eventBroker = new RundownEventBroker();
   const storage = new RundownStorage(config.storageDir);

@@ -57,6 +57,14 @@ export const FuzzyCueSchema = BaseCueSchema.extend({
   threshold: z.number().min(0).max(1).default(0.8),
 });
 
+export const SemanticCueSchema = BaseCueSchema.extend({
+  type: z.literal("semantic"),
+  phrase: z.string().min(1),
+  threshold: z.number().min(0).max(1).default(0.70),
+  context_mode: z.enum(["line", "window", "both"]).default("window"),
+  context_segments: z.number().int().min(1).max(20).default(3),
+});
+
 export const RegexCueSchema = BaseCueSchema.extend({
   type: z.literal("regex"),
   pattern: z.string().min(1),
@@ -76,6 +84,7 @@ export const ManualCueSchema = BaseCueSchema.extend({
 export const SingleCueSchema = z.discriminatedUnion("type", [
   PhraseCueSchema,
   FuzzyCueSchema,
+  SemanticCueSchema,
   RegexCueSchema,
   SoundCueSchema,
   ManualCueSchema,

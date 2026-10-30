@@ -119,6 +119,13 @@ export class RundownEngine {
       }
     }
 
+    // 4b. Preflight semantic cues to piembed
+    this.cueMatcher.clearContext();
+    const semanticCues = this.extractSemanticCues(executableItems, this.variableStore.getAll());
+    if (semanticCues.length > 0) {
+      await this.cueMatcher.preflightCues(doc.title ?? "default", semanticCues);
+    }
+
     // 5. Activate first executable item
     if (executableItems.length > 0 && executableItems[0]) {
       this.currentExecutableId = executableItems[0].id;
@@ -374,9 +381,35 @@ export class RundownEngine {
     return await this.fireExecutableItem(targetExecItem, "manual");
   }
 
+  private extractSemanticCues(
+    executableItems: ExecutableItem[],
+    vars: Record<string, string>
+  ): Array<{ id: string; phrase: string }> {
+    const out: Array<{ id: string; phrase: string }> = [];
+    const interpolate = (text: string) =>
+      text.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_, k) => vars[k] ?? "");
+
+    for (const item of executableItems) {
+      const cue = item.cue as any;
+      if (!cue || typeof cue !== "object") continue;
+      if (cue.type === "semantic" && typeof cue.phrase === "string") {
+        out.push({ id: item.id, phrase: interpolate(cue.phrase) });
+      } else if ((cue.type === "all" || cue.type === "any") && Array.isArray(cue.conditions)) {
+        cue.conditions.forEach((cond: any, idx: number) => {
+          if (cond && cond.type === "semantic" && typeof cond.phrase === "string") {
+            out.push({ id: `${item.id}:${idx}`, phrase: interpolate(cond.phrase) });
+          }
+        });
+      }
+    }
+    return out;
+  }
+
   async onTranscript(text: string): Promise<boolean> {
     if (!this.cueEngineEnabled) return false;
     if (!this.rundown) return false;
+
+    this.cueMatcher.pushContextLine(text);
 
     const { executableItems } = buildRundownDisplay(
       this.rundown.rundown,
@@ -396,7 +429,7 @@ export class RundownEngine {
     if (currentIdx >= 0 && currentIdx < executableItems.length) {
       const current = executableItems[currentIdx]!;
       if (current.cue) {
-        const match = this.cueMatcher.evaluate(
+        const match = await this.cueMatcher.evaluateAsync(
           current.cue as any,
           { text, variables: vars },
           current.id
@@ -413,7 +446,7 @@ export class RundownEngine {
     if (nextIdx < executableItems.length) {
       const nextItem = executableItems[nextIdx]!;
       if (nextItem.cue) {
-        const match = this.cueMatcher.evaluate(
+        const match = await this.cueMatcher.evaluateAsync(
           nextItem.cue as any,
           { text, variables: vars },
           nextItem.id
@@ -429,7 +462,7 @@ export class RundownEngine {
     for (let idx = currentIdx + 2; idx < executableItems.length; idx++) {
       const futureItem = executableItems[idx]!;
       if (futureItem.cue && ((futureItem.cue as any).mode === "skip" || (futureItem.cue as any).mode === "any")) {
-        const match = this.cueMatcher.evaluate(
+        const match = await this.cueMatcher.evaluateAsync(
           futureItem.cue as any,
           { text, variables: vars },
           futureItem.id

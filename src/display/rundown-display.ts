@@ -111,6 +111,7 @@ export function summarizeCue(cue: unknown): string | undefined {
   const c = cue as any;
   if (c.type === "sound") return `Sound: ${c.event ?? "event"}`;
   if (c.type === "fuzzy") return `Speech: "${c.phrase ?? ""}"`;
+  if (c.type === "semantic") return `Semantic: "${c.phrase ?? ""}"`;
   if (c.type === "phrase") return `Exact: "${c.phrase ?? ""}"`;
   if (c.type === "regex") return `Regex: /${c.pattern ?? ""}/`;
   if (c.type === "manual") return `Manual`;
