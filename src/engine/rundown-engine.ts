@@ -9,6 +9,8 @@ export type ItemStatus = "pending" | "active" | "completed" | "skipped";
 
 export interface ItemStateSnapshot {
   id: string;
+  line: number;
+  index: number;
   title: string;
   section?: string;
   status: ItemStatus;
@@ -24,6 +26,7 @@ export interface RundownStatusSnapshot {
   church?: string;
   date?: string;
   currentIndex: number;
+  currentLine: number | null;
   totalItems: number;
   currentItem: ItemStateSnapshot | null;
   items: ItemStateSnapshot[];
@@ -38,6 +41,7 @@ export class RundownEngine {
   private readonly itemStates = new Map<string, ItemStatus>();
   private readonly history: Array<{ timestamp: string; type: string; detail: unknown }> = [];
   private cueEngineEnabled = true;
+  private readonly firedItems = new Set<string>();
 
   private readonly variableStore: VariableStore;
   private readonly varfetchEngine: VarfetchEngine;
@@ -68,6 +72,7 @@ export class RundownEngine {
     this.rundown = doc;
     this.itemStates.clear();
     this.history.length = 0;
+    this.firedItems.clear();
 
     // 1. Register connectors
     if (doc.connectors) {
@@ -107,6 +112,7 @@ export class RundownEngine {
 
   reset(): void {
     if (!this.rundown) return;
+    this.firedItems.clear();
     for (const item of this.rundown.rundown) {
       this.itemStates.set(item.id, "pending");
     }
@@ -144,6 +150,9 @@ export class RundownEngine {
     if (Array.isArray(snapshot.items)) {
       for (const it of snapshot.items) {
         this.itemStates.set(it.id, it.status);
+        if (it.status === "completed" || it.status === "active") {
+          this.firedItems.add(it.id);
+        }
       }
     }
     if (snapshot.variables) {
@@ -241,27 +250,39 @@ export class RundownEngine {
     return true;
   }
 
-  async fire(id?: string): Promise<{ ok: boolean; executed: ExecutionResult[] }> {
-    if (!this.rundown) return { ok: false, executed: [] };
-    const targetItem = id
-      ? this.rundown.rundown.find((it) => it.id === id)
-      : this.getCurrentItem();
+  async fire(target?: number | string | { line?: number; id?: string }): Promise<{ ok: boolean; executed: ExecutionResult[] }> {
+    if (!this.rundown || this.rundown.rundown.length === 0) return { ok: false, executed: [] };
 
-    if (!targetItem) return { ok: false, executed: [] };
+    let targetIdx = -1;
+    if (typeof target === "number") {
+      targetIdx = target - 1;
+    } else if (typeof target === "string") {
+      const trimmed = target.trim();
+      if (/^\d+$/.test(trimmed)) {
+        targetIdx = parseInt(trimmed, 10) - 1;
+      } else {
+        targetIdx = this.rundown.rundown.findIndex((it) => it.id === trimmed);
+      }
+    } else if (typeof target === "object" && target !== null) {
+      if (typeof target.line === "number") {
+        targetIdx = target.line - 1;
+      } else if (typeof target.id === "string") {
+        const trimmed = target.id.trim();
+        if (/^\d+$/.test(trimmed)) {
+          targetIdx = parseInt(trimmed, 10) - 1;
+        } else {
+          targetIdx = this.rundown.rundown.findIndex((it) => it.id === trimmed);
+        }
+      }
+    } else {
+      targetIdx = this.currentIndex >= 0 ? this.currentIndex : 0;
+    }
 
-    // Fire cue manually
-    this.eventBroker.emit("cue_fired", {
-      itemId: targetItem.id,
-      title: targetItem.title,
-      manual: true,
-      timestamp: new Date().toISOString(),
-    });
+    if (targetIdx < 0 || targetIdx >= this.rundown.rundown.length) {
+      return { ok: false, executed: [] };
+    }
 
-    const executed = await this.executeItemActions(targetItem);
-    this.itemStates.set(targetItem.id, "completed");
-
-    this.advanceAfterCompletion(targetItem);
-    return { ok: true, executed };
+    return await this.fireItemAt(targetIdx, "manual");
   }
 
   async onTranscript(text: string): Promise<boolean> {
@@ -270,25 +291,41 @@ export class RundownEngine {
       return false;
     }
 
-    const current = this.getCurrentItem();
     const vars = this.variableStore.getAll();
 
-    // 1. Check current active item's cue
+    // 1. Check current item's cue
+    const current = this.getCurrentItem();
     if (current && current.cue) {
       const match = this.cueMatcher.evaluate(
         current.cue,
         { text, variables: vars },
         current.id
       );
-
       if (match.matched) {
-        await this.handleCueMatch(current, match.reason);
+        await this.fireItemAt(this.currentIndex, match.reason);
         return true;
       }
     }
 
-    // 2. Check future items that allow 'skip' or 'any' mode
-    for (let idx = this.currentIndex + 1; idx < this.rundown.rundown.length; idx++) {
+    // 2. Check next item (currentIndex + 1)
+    const nextIdx = this.currentIndex + 1;
+    if (nextIdx < this.rundown.rundown.length) {
+      const nextItem = this.rundown.rundown[nextIdx]!;
+      if (nextItem.cue) {
+        const match = this.cueMatcher.evaluate(
+          nextItem.cue,
+          { text, variables: vars },
+          nextItem.id
+        );
+        if (match.matched) {
+          await this.fireItemAt(nextIdx, match.reason);
+          return true;
+        }
+      }
+    }
+
+    // 3. Check future items that allow 'skip' or 'any' mode
+    for (let idx = this.currentIndex + 2; idx < this.rundown.rundown.length; idx++) {
       const futureItem = this.rundown.rundown[idx]!;
       if (futureItem.cue && (futureItem.cue.mode === "skip" || futureItem.cue.mode === "any")) {
         const match = this.cueMatcher.evaluate(
@@ -297,13 +334,7 @@ export class RundownEngine {
           futureItem.id
         );
         if (match.matched) {
-          // Mark skipped items in between
-          for (let skipIdx = this.currentIndex; skipIdx < idx; skipIdx++) {
-            const skipped = this.rundown.rundown[skipIdx]!;
-            this.itemStates.set(skipped.id, "skipped");
-          }
-          this.currentIndex = idx;
-          await this.handleCueMatch(futureItem, match.reason);
+          await this.fireItemAt(idx, match.reason);
           return true;
         }
       }
@@ -320,51 +351,103 @@ export class RundownEngine {
       return false;
     }
 
+    // 1. Check current item's cue
     const current = this.getCurrentItem();
-    if (!current || !current.cue) return false;
+    if (current && current.cue) {
+      const match = this.cueMatcher.evaluate(
+        current.cue,
+        { soundEvent: event },
+        current.id
+      );
+      if (match.matched) {
+        await this.fireItemAt(this.currentIndex, match.reason);
+        return true;
+      }
+    }
 
-    const match = this.cueMatcher.evaluate(
-      current.cue,
-      { soundEvent: event },
-      current.id
-    );
+    // 2. Check next item (currentIndex + 1)
+    const nextIdx = this.currentIndex + 1;
+    if (nextIdx < this.rundown.rundown.length) {
+      const nextItem = this.rundown.rundown[nextIdx]!;
+      if (nextItem.cue) {
+        const match = this.cueMatcher.evaluate(
+          nextItem.cue,
+          { soundEvent: event },
+          nextItem.id
+        );
+        if (match.matched) {
+          await this.fireItemAt(nextIdx, match.reason);
+          return true;
+        }
+      }
+    }
 
-    if (match.matched) {
-      await this.handleCueMatch(current, match.reason);
-      return true;
+    // 3. Check future items that allow 'skip' or 'any' mode
+    for (let idx = this.currentIndex + 2; idx < this.rundown.rundown.length; idx++) {
+      const futureItem = this.rundown.rundown[idx]!;
+      if (futureItem.cue && (futureItem.cue.mode === "skip" || futureItem.cue.mode === "any")) {
+        const match = this.cueMatcher.evaluate(
+          futureItem.cue,
+          { soundEvent: event },
+          futureItem.id
+        );
+        if (match.matched) {
+          await this.fireItemAt(idx, match.reason);
+          return true;
+        }
+      }
     }
 
     return false;
   }
 
-  private async handleCueMatch(item: RundownItem, reason?: string): Promise<void> {
+  private async fireItemAt(targetIndex: number, reason?: string): Promise<{ ok: boolean; executed: ExecutionResult[] }> {
+    if (!this.rundown || targetIndex < 0 || targetIndex >= this.rundown.rundown.length) {
+      return { ok: false, executed: [] };
+    }
+
+    const item = this.rundown.rundown[targetIndex]!;
+    const line = targetIndex + 1;
+
+    // Transition states:
+    // Prior items 0 .. targetIndex - 1: pending/active become completed
+    // Target item: active
+    // Following items: if active, become pending
+    this.rundown.rundown.forEach((it, idx) => {
+      if (idx < targetIndex) {
+        const s = this.itemStates.get(it.id);
+        if (s === "pending" || s === "active") {
+          this.itemStates.set(it.id, "completed");
+        }
+      } else if (idx === targetIndex) {
+        this.itemStates.set(it.id, "active");
+      } else {
+        if (this.itemStates.get(it.id) === "active") {
+          this.itemStates.set(it.id, "pending");
+        }
+      }
+    });
+
+    this.currentIndex = targetIndex;
+    this.firedItems.add(item.id);
+
     this.eventBroker.emit("cue_fired", {
       itemId: item.id,
       title: item.title,
+      line,
+      index: targetIndex,
       reason,
       timestamp: new Date().toISOString(),
     });
-    this.logHistory("cue_fired", { id: item.id, title: item.title, reason });
+    this.logHistory("cue_fired", { id: item.id, line, index: targetIndex, title: item.title, reason });
+
+    // Inform gateway: line <line> fires!
+    await this.actionDispatcher.fireLine(line, item.id);
 
     const executed = await this.executeItemActions(item);
-    this.itemStates.set(item.id, "completed");
-
-    this.advanceAfterCompletion(item);
-  }
-
-  private advanceAfterCompletion(item: RundownItem): boolean {
-    const currentIdx = this.rundown?.rundown.findIndex((it) => it.id === item.id) ?? -1;
-    if (this.rundown && currentIdx >= 0) {
-      const nextIdx = currentIdx + 1;
-      if (nextIdx < this.rundown.rundown.length && this.rundown.rundown[nextIdx]) {
-        this.currentIndex = nextIdx;
-        this.itemStates.set(this.rundown.rundown[nextIdx]!.id, "active");
-      } else {
-        this.currentIndex = this.rundown.rundown.length;
-      }
-    }
     this.emitState();
-    return true;
+
+    return { ok: true, executed };
   }
 
   private async executeItemActions(item: RundownItem): Promise<ExecutionResult[]> {
@@ -405,6 +488,7 @@ export class RundownEngine {
       return {
         loaded: false,
         currentIndex: -1,
+        currentLine: null,
         totalItems: 0,
         currentItem: null,
         items: [],
@@ -414,8 +498,10 @@ export class RundownEngine {
       };
     }
 
-    const items: ItemStateSnapshot[] = this.rundown.rundown.map((it) => ({
+    const items: ItemStateSnapshot[] = this.rundown.rundown.map((it, idx) => ({
       id: it.id,
+      line: idx + 1,
+      index: idx,
       title: it.title,
       section: it.section,
       status: this.itemStates.get(it.id) ?? "pending",
@@ -429,6 +515,11 @@ export class RundownEngine {
         ? items[this.currentIndex] ?? null
         : null;
 
+    const currentLine =
+      this.currentIndex >= 0 && this.currentIndex < items.length
+        ? this.currentIndex + 1
+        : null;
+
     return {
       loaded: true,
       title: this.rundown.title,
@@ -436,6 +527,7 @@ export class RundownEngine {
       church: this.rundown.church,
       date: this.rundown.date,
       currentIndex: this.currentIndex,
+      currentLine,
       totalItems: items.length,
       currentItem,
       items,

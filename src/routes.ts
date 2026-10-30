@@ -110,6 +110,15 @@ export function registerRoutes(app: FastifyInstance, options: RegisterRoutesOpti
     return { ok: skipped, rundown: engine.getStatus() };
   });
 
+  app.post<{ Body?: { target?: string | number; line?: number; id?: string } }>("/api/v1/rundown/fire", { preHandler: requireAuth }, async (req, reply) => {
+    const target = req.body?.line !== undefined ? req.body.line : req.body?.id ?? req.body?.target;
+    const result = await engine.fire(target);
+    if (!result.ok) {
+      return reply.status(404).send({ error: "Rundown item not found or out of bounds." });
+    }
+    return { ok: true, executed: result.executed, rundown: engine.getStatus() };
+  });
+
   app.post<{ Params: { id: string } }>("/api/v1/rundown/fire/:id", { preHandler: requireAuth }, async (req, reply) => {
     const result = await engine.fire(req.params.id);
     if (!result.ok) {

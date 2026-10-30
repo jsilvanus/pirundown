@@ -63,7 +63,7 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
   assert.equal(status.currentItem?.id, "alkusoitto");
   assert.equal(status.currentItem?.status, "active");
 
-  // 2. Sound event: music stops (Prelude ends)
+  // 2. Sound event: music stops (Prelude triggers alkusoitto / line 1)
   const soundMatched = await engine.onSoundEvent("music_stop");
   assert.equal(soundMatched, true);
 
@@ -71,24 +71,28 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
   assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "cam:preset" && c.body?.actor === "rundown"));
   assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "atem:cut" && c.body?.actor === "rundown"));
 
-  // Pointer should have advanced to alkusiunaus
+  // Line 1 fired: pointer moves to line 1 and remains active while playing
   status = engine.getStatus();
-  assert.equal(status.currentIndex, 1);
-  assert.equal(status.currentItem?.id, "alkusiunaus");
+  assert.equal(status.currentIndex, 0);
+  assert.equal(status.currentLine, 1);
+  assert.equal(status.currentItem?.id, "alkusoitto");
   assert.equal(status.currentItem?.status, "active");
 
-  // 3. Transcript event: Priest speaks Invocatio
+  // 3. Transcript event: Priest speaks Invocatio for line 2 (alkusiunaus)
   const transcriptMatched = await engine.onTranscript(
     "Liturgi aloittaa Isän ja Pojan ja Pyhän Hengen nimeen olkaa hyvät"
   );
   assert.equal(transcriptMatched, true);
 
-  // Pointer advances to alkuvirsi
+  // Line 2 fired: pointer moves to line 2 (alkusiunaus), line 1 becomes completed
   status = engine.getStatus();
-  assert.equal(status.currentIndex, 2);
-  assert.equal(status.currentItem?.id, "alkuvirsi");
+  assert.equal(status.currentIndex, 1);
+  assert.equal(status.currentLine, 2);
+  assert.equal(status.currentItem?.id, "alkusiunaus");
+  assert.equal(status.currentItem?.status, "active");
+  assert.equal(status.items[0]?.status, "completed");
 
-  // 4. Manual fire: operator triggers alkuvirsi directly
+  // 4. Manual fire: operator triggers line 3 (alkuvirsi) directly
   executedCalls.length = 0;
   const fireRes = await engine.fire("alkuvirsi");
   assert.equal(fireRes.ok, true);
@@ -103,10 +107,13 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
     )
   );
 
-  // Pointer advances to paivan_rukous
+  // Line 3 fired: pointer moves to line 3 (alkuvirsi)
   status = engine.getStatus();
-  assert.equal(status.currentIndex, 3);
-  assert.equal(status.currentItem?.id, "paivan_rukous");
+  assert.equal(status.currentIndex, 2);
+  assert.equal(status.currentLine, 3);
+  assert.equal(status.currentItem?.id, "alkuvirsi");
+  assert.equal(status.currentItem?.status, "active");
+  assert.equal(status.items[1]?.status, "completed");
 
   // 5. Test goto
   engine.goto("saarna");
@@ -202,4 +209,56 @@ test("RundownEngine - operator toggle cue engine on and off for pure human contr
   const reenabledMatch = await engine.onTranscript("Liturgi aloittaa Isän ja Pojan ja Pyhän Hengen nimeen");
   assert.equal(reenabledMatch, true);
   assert.ok(executedCalls.length > 0);
+});
+
+test("RundownEngine - line 17 fires and pointer moves to line 17", async () => {
+  const variableStore = new VariableStore();
+  const varfetchEngine = new VarfetchEngine(variableStore);
+  const cueMatcher = new CueMatcher();
+  const actionDispatcher = new ActionDispatcher(
+    { pigatewayUrl: "http://gateway.test" } as any,
+    variableStore,
+    varfetchEngine,
+    async () => new Response(JSON.stringify({ ok: true }))
+  );
+  const eventBroker = new RundownEventBroker();
+  const engine = new RundownEngine(
+    variableStore,
+    varfetchEngine,
+    cueMatcher,
+    actionDispatcher,
+    eventBroker
+  );
+
+  const items = Array.from({ length: 25 }, (_, i) => ({
+    id: `item-${i + 1}`,
+    title: `Item ${i + 1}`,
+    actions: [],
+  }));
+
+  await engine.load({
+    version: 2,
+    title: "Large Rundown",
+    rundown: items,
+  } as any);
+
+  // pirundown says line 17 fires!
+  const res = await engine.fire(17);
+  assert.equal(res.ok, true);
+
+  const status = engine.getStatus();
+  assert.equal(status.currentIndex, 16);
+  assert.equal(status.currentLine, 17);
+  assert.equal(status.currentItem?.id, "item-17");
+  assert.equal(status.currentItem?.status, "active");
+
+  // Items before line 17 are completed
+  for (let idx = 0; idx < 16; idx++) {
+    assert.equal(status.items[idx]?.status, "completed");
+  }
+
+  // Items after line 17 are pending
+  for (let idx = 17; idx < 25; idx++) {
+    assert.equal(status.items[idx]?.status, "pending");
+  }
 });

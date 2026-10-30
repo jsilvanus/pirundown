@@ -11,7 +11,7 @@ Usage:
   pirundown prev                       Step back to the previous item
   pirundown goto <id>                  Jump directly to item ID
   pirundown skip [id]                  Skip current (or specified) item
-  pirundown fire <id>                  Manually fire cue & execute actions for item
+  pirundown fire [target]              Manually fire line number or item ID (e.g. 17 or saarna)
   pirundown reset                      Reset active rundown to start
   pirundown cues [on|off|toggle]       Toggle or set cue engine (pure human control mode)
   pirundown vars                       List all active variables
@@ -85,7 +85,7 @@ async function runCli(): Promise<void> {
             console.log("No rundown loaded.");
           } else {
             console.log(`\nRundown: ${rd.title} (${rd.service ?? "Service"})`);
-            console.log(`Progress: [${rd.currentIndex + 1}/${rd.totalItems}]`);
+            console.log(`Progress: [Line ${rd.currentIndex + 1}/${rd.totalItems}]`);
             console.log(`Current:  ${rd.currentItem?.title ?? "None"} (${rd.currentItem?.id ?? "-"})`);
             console.log(`Status:   ${rd.currentItem?.status ?? "-"}`);
             const cueState = rd.cueEngineEnabled !== false ? "ENABLED (Auto cues active)" : "OFF (Pure human control mode)";
@@ -94,7 +94,8 @@ async function runCli(): Promise<void> {
             for (const it of rd.items) {
               const marker = it.id === rd.currentItem?.id ? "👉" : "  ";
               const statusTag = `[${it.status.toUpperCase()}]`.padEnd(11);
-              console.log(`${marker} ${statusTag} ${it.id.padEnd(16)} ${it.title}`);
+              const lineStr = String(it.line ?? "").padStart(2);
+              console.log(`${marker} Line ${lineStr} ${statusTag} ${it.id.padEnd(16)} ${it.title}`);
             }
           }
         }
@@ -149,13 +150,14 @@ async function runCli(): Promise<void> {
       }
 
       case "fire": {
-        const id = filteredArgs[1];
-        if (!id) {
-          console.error("Error: Missing item ID to fire.");
-          process.exit(1);
+        const target = filteredArgs[1];
+        let res: any;
+        if (target) {
+          res = await post(`/api/v1/rundown/fire/${encodeURIComponent(target)}`);
+        } else {
+          res = await post("/api/v1/rundown/fire");
         }
-        const res = await post(`/api/v1/rundown/fire/${encodeURIComponent(id)}`);
-        console.log(jsonMode ? JSON.stringify(res, null, 2) : `Fired cue for item '${id}'.`);
+        console.log(jsonMode ? JSON.stringify(res, null, 2) : `Fired line/item '${target ?? "current"}'.`);
         break;
       }
 

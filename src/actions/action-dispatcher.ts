@@ -194,6 +194,14 @@ export class ActionDispatcher {
     }
   }
 
+  async fireLine(line: number, id?: string): Promise<ExecutionResult> {
+    return await this.callGatewayAction({
+      action: "rundown:fire",
+      params: { line, ...(id ? { id } : {}) },
+      actor: "rundown",
+    });
+  }
+
   private async callGatewayAction(payload: {
     action: string;
     params?: Record<string, unknown>;
