@@ -3,6 +3,7 @@ import type { RundownEngine } from "./engine/rundown-engine.js";
 import type { VariableStore } from "./variables/variable-store.js";
 import type { VarfetchEngine } from "./variables/varfetch-engine.js";
 import type { RundownEventBroker } from "./events.js";
+import type { RundownStorage } from "./storage/rundown-storage.js";
 import { parseRundownYaml, loadRundownFile } from "./parser/yaml-parser.js";
 
 export interface RegisterRoutesOptions {
@@ -10,11 +11,12 @@ export interface RegisterRoutesOptions {
   variableStore: VariableStore;
   varfetchEngine: VarfetchEngine;
   eventBroker: RundownEventBroker;
+  storage: RundownStorage;
   apiKey?: string | undefined;
 }
 
 export function registerRoutes(app: FastifyInstance, options: RegisterRoutesOptions): void {
-  const { engine, variableStore, varfetchEngine, eventBroker, apiKey } = options;
+  const { engine, variableStore, varfetchEngine, eventBroker, storage, apiKey } = options;
 
   // Simple auth check for mutating calls if apiKey configured
   const requireAuth = async (req: FastifyRequest, reply: FastifyReply) => {
@@ -217,6 +219,143 @@ export function registerRoutes(app: FastifyInstance, options: RegisterRoutesOpti
       if (!event) return reply.status(400).send({ error: "Missing sound event" });
       const matched = await engine.onSoundEvent(event);
       return { ok: true, matched, rundown: engine.getStatus() };
+    }
+  );
+
+  // 6. Rundown Storage Endpoints (for pirundown-designer and operator archiving)
+  const listStorageHandler = async () => {
+    const items = storage.list();
+    const currentStatus = engine.getStatus();
+    const currentTitle = currentStatus.title;
+
+    const enriched = items.map((item) => ({
+      ...item,
+      active: Boolean(currentStatus.loaded && item.title === currentTitle),
+    }));
+
+    return {
+      ok: true,
+      count: enriched.length,
+      storageDirectory: storage.getStorageDirectory(),
+      rundowns: enriched,
+    };
+  };
+
+  app.get("/api/v1/storage", listStorageHandler);
+  app.get("/api/v1/storage/rundowns", listStorageHandler);
+
+  app.get<{ Params: { id: string } }>("/api/v1/storage/:id", async (req, reply) => {
+    const detail = storage.get(req.params.id);
+    if (!detail) {
+      return reply.status(404).send({ error: `Rundownia '${req.params.id}' ei löydy tallennustilasta.` });
+    }
+
+    const acceptHeader = req.headers.accept;
+    if (acceptHeader?.includes("text/yaml") || acceptHeader?.includes("application/yaml")) {
+      reply.type("text/yaml; charset=utf-8").send(detail.yaml);
+      return;
+    }
+
+    const currentStatus = engine.getStatus();
+    return {
+      ok: true,
+      rundown: {
+        ...detail,
+        active: Boolean(currentStatus.loaded && detail.title === currentStatus.title),
+      },
+    };
+  });
+
+  app.post<{ Body: { id?: string; name?: string; yaml: string; load?: boolean } }>(
+    "/api/v1/storage",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const { id, name, yaml, load } = req.body ?? {};
+      if (!yaml) {
+        return reply.status(400).send({ error: "Kenttä 'yaml' on pakollinen." });
+      }
+
+      const saveId = id || name;
+      const res = storage.save(saveId, yaml);
+      if (!res.ok || !res.item) {
+        return reply.status(422).send({ error: res.error || "Tallennus epäonnistui." });
+      }
+
+      let loaded = false;
+      if (load && res.item.data) {
+        await engine.load(res.item.data);
+        loaded = true;
+      }
+
+      return {
+        ok: true,
+        item: res.item,
+        loaded,
+        currentRundown: loaded ? engine.getStatus() : undefined,
+      };
+    }
+  );
+
+  app.put<{ Params: { id: string }; Body: { yaml: string; load?: boolean } }>(
+    "/api/v1/storage/:id",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const { yaml, load } = req.body ?? {};
+      if (!yaml) {
+        return reply.status(400).send({ error: "Kenttä 'yaml' on pakollinen." });
+      }
+
+      const res = storage.save(req.params.id, yaml);
+      if (!res.ok || !res.item) {
+        return reply.status(422).send({ error: res.error || "Tallennus epäonnistui." });
+      }
+
+      let loaded = false;
+      if (load && res.item.data) {
+        await engine.load(res.item.data);
+        loaded = true;
+      }
+
+      return {
+        ok: true,
+        item: res.item,
+        loaded,
+        currentRundown: loaded ? engine.getStatus() : undefined,
+      };
+    }
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/api/v1/storage/:id/load",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const detail = storage.get(req.params.id);
+      if (!detail) {
+        return reply.status(404).send({ error: `Rundownia '${req.params.id}' ei löydy tallennustilasta.` });
+      }
+
+      if (!detail.data) {
+        return reply.status(422).send({ error: "Tallennetun rundownin tiedosto ei sisällä kelvollista dataa." });
+      }
+
+      await engine.load(detail.data);
+      return {
+        ok: true,
+        loadedId: detail.id,
+        rundown: engine.getStatus(),
+      };
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/api/v1/storage/:id",
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const deleted = storage.delete(req.params.id);
+      if (!deleted) {
+        return reply.status(404).send({ error: `Rundownia '${req.params.id}' ei löydy poistettavaksi.` });
+      }
+      return { ok: true, deleted: true, id: req.params.id };
     }
   );
 }

@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 export interface AppConfig {
   port: number;
   host: string;
@@ -8,6 +10,7 @@ export interface AppConfig {
   piprogramUrl: string;
   autoConnectGateway: boolean;
   defaultRundownPath?: string | undefined;
+  storageDir: string;
 }
 
 export function loadConfig(env = process.env): AppConfig {
@@ -21,5 +24,6 @@ export function loadConfig(env = process.env): AppConfig {
     piprogramUrl: (env.PIRUNDOWN_PIPROGRAM_URL ?? env.PIPROGRAM_URL ?? "http://127.0.0.1:3100").replace(/\/+$/, ""),
     autoConnectGateway: env.PIRUNDOWN_AUTO_CONNECT_GATEWAY !== "false",
     defaultRundownPath: env.PIRUNDOWN_DEFAULT_RUNDOWN_PATH,
+    storageDir: env.PIRUNDOWN_STORAGE_DIR ?? join(process.cwd(), "storage"),
   };
 }

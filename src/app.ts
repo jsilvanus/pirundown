@@ -7,6 +7,7 @@ import { ActionDispatcher } from "./actions/action-dispatcher.js";
 import { RundownEventBroker } from "./events.js";
 import { RundownEngine } from "./engine/rundown-engine.js";
 import { GatewaySseClient } from "./engine/gateway-sse-client.js";
+import { RundownStorage } from "./storage/rundown-storage.js";
 import { registerRoutes } from "./routes.js";
 import { loadRundownFile } from "./parser/yaml-parser.js";
 
@@ -17,6 +18,7 @@ export interface BuildAppResult {
   varfetchEngine: VarfetchEngine;
   eventBroker: RundownEventBroker;
   gatewayClient: GatewaySseClient;
+  storage: RundownStorage;
 }
 
 export async function buildApp(config: AppConfig, options?: { fetchFn?: typeof fetch }): Promise<BuildAppResult> {
@@ -29,6 +31,7 @@ export async function buildApp(config: AppConfig, options?: { fetchFn?: typeof f
   const cueMatcher = new CueMatcher();
   const actionDispatcher = new ActionDispatcher(config, variableStore, varfetchEngine, options?.fetchFn);
   const eventBroker = new RundownEventBroker();
+  const storage = new RundownStorage(config.storageDir);
 
   const engine = new RundownEngine(
     variableStore,
@@ -50,6 +53,7 @@ export async function buildApp(config: AppConfig, options?: { fetchFn?: typeof f
     variableStore,
     varfetchEngine,
     eventBroker,
+    storage,
     apiKey: config.apiKey,
   });
 
@@ -76,5 +80,6 @@ export async function buildApp(config: AppConfig, options?: { fetchFn?: typeof f
     varfetchEngine,
     eventBroker,
     gatewayClient,
+    storage,
   };
 }

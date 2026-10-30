@@ -5,7 +5,8 @@ export type RundownEventType =
   | "cue_fired"
   | "cue_engine_toggled"
   | "action_executed"
-  | "variable_updated";
+  | "variable_updated"
+  | "alternation_step";
 
 export interface RundownEvent {
   type: RundownEventType;
