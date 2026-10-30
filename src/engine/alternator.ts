@@ -66,7 +66,7 @@ export function normalizeAlternatorConfig(
 
   if (Array.isArray(def.cut) && def.cut.length > 0) {
     for (const input of def.cut) {
-      steps.push([{ atem: { cut: Number(input) } } as ActionItem]);
+      steps.push([{ switch: { cut: Number(input) } } as ActionItem]);
     }
   } else if (Array.isArray(def.steps) && def.steps.length > 0) {
     for (const step of def.steps) {

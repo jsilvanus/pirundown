@@ -102,14 +102,22 @@ export const CueSchema = z.union([
 export type Cue = z.infer<typeof CueSchema>;
 
 // --- Action Schema ---
+export const SwitchVideoActionSchema = z.object({
+  cut: z.number().optional(),
+  preview: z.number().optional(),
+  program: z.number().optional(),
+  auto: z.boolean().optional(),
+  dsk: z.number().optional(),
+  state: z.enum(["on", "off", "toggle"]).optional(),
+  ftb: z.boolean().optional(),
+});
+
+export const SwitchActionSchema = z.object({
+  switch: SwitchVideoActionSchema,
+});
+
 export const AtemActionSchema = z.object({
-  atem: z.object({
-    cut: z.number().optional(),
-    auto: z.boolean().optional(),
-    dsk: z.number().optional(),
-    state: z.enum(["on", "off", "toggle"]).optional(),
-    ftb: z.boolean().optional(),
-  }),
+  atem: SwitchVideoActionSchema,
 });
 
 export const CamActionSchema = z.object({
@@ -173,6 +181,7 @@ export const AlternateActionSchema = z.object({
 });
 
 export const ActionItemSchema = z.union([
+  SwitchActionSchema,
   AtemActionSchema,
   CamActionSchema,
   TallyActionSchema,

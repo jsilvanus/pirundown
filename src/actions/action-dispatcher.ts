@@ -72,20 +72,27 @@ export class ActionDispatcher {
         return await this.callGatewayAction({ action: resolved });
       }
 
-      // 2. Gateway Device Actions (ATEM, Camera, Tally, PiPGM)
-      if ("atem" in action) {
-        const { cut, auto, ftb, dsk, state } = action.atem;
+      // 2. Gateway Device Actions (Switch/ATEM, Camera, Tally, PiPGM)
+      const switchAction = ("switch" in action) ? action.switch : ("atem" in action) ? action.atem : undefined;
+      if (switchAction) {
+        const { cut, preview, program, auto, ftb, dsk, state } = switchAction;
         if (cut !== undefined) {
-          return await this.callGatewayAction({ action: "atem:cut", params: { input: cut } });
+          return await this.callGatewayAction({ action: "switch:cut", params: { input: cut } });
+        }
+        if (preview !== undefined) {
+          return await this.callGatewayAction({ action: "switch:preview", params: { input: preview } });
+        }
+        if (program !== undefined) {
+          return await this.callGatewayAction({ action: "switch:program", params: { input: program } });
         }
         if (auto) {
-          return await this.callGatewayAction({ action: "atem:auto" });
+          return await this.callGatewayAction({ action: "switch:auto" });
         }
         if (ftb) {
-          return await this.callGatewayAction({ action: "atem:ftb" });
+          return await this.callGatewayAction({ action: "switch:ftb" });
         }
         if (dsk !== undefined) {
-          return await this.callGatewayAction({ action: "atem:dsk", params: { dskIndex: dsk, state } });
+          return await this.callGatewayAction({ action: "switch:dsk", params: { dskIndex: dsk, state } });
         }
       }
 

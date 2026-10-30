@@ -59,7 +59,7 @@ test("Alternation - deterministic action alternation between cam 1 and cam 2", a
   // Initial actions executed: cam 1 preset 1, cam 2 preset 2, cut 1
   assert.ok(executedCalls.some((c) => c.body?.action === "cam:preset" && Number(c.body?.params?.id) === 1));
   assert.ok(executedCalls.some((c) => c.body?.action === "cam:preset" && Number(c.body?.params?.id) === 2));
-  assert.ok(executedCalls.some((c) => c.body?.action === "atem:cut" && Number(c.body?.params?.input) === 1));
+  assert.ok(executedCalls.some((c) => (c.body?.action === "switch:cut" || c.body?.action === "atem:cut") && Number(c.body?.params?.input) === 1));
 
   // Alternator is active
   const alternator = rundownEngine.getActiveAlternator();
@@ -71,19 +71,19 @@ test("Alternation - deterministic action alternation between cam 1 and cam 2", a
   executedCalls.length = 0;
   await alternator.step();
   assert.equal(executedCalls.length, 1);
-  assert.equal(executedCalls[0]?.body?.action === "atem:cut" && executedCalls[0]?.body?.params?.input, 2);
+  assert.equal(executedCalls[0]?.body?.action === "switch:cut" && executedCalls[0]?.body?.params?.input, 2);
 
   // Step 2: cuts back to Cam 1
   executedCalls.length = 0;
   await alternator.step();
   assert.equal(executedCalls.length, 1);
-  assert.equal(executedCalls[0]?.body?.action === "atem:cut" && executedCalls[0]?.body?.params?.input, 1);
+  assert.equal(executedCalls[0]?.body?.action === "switch:cut" && executedCalls[0]?.body?.params?.input, 1);
 
   // Step 3: cuts back to Cam 2
   executedCalls.length = 0;
   await alternator.step();
   assert.equal(executedCalls.length, 1);
-  assert.equal(executedCalls[0]?.body?.action === "atem:cut" && executedCalls[0]?.body?.params?.input, 2);
+  assert.equal(executedCalls[0]?.body?.action === "switch:cut" && executedCalls[0]?.body?.params?.input, 2);
 
   // Stopping / advancing stops alternator
   await rundownEngine.next();
@@ -151,7 +151,7 @@ test("Alternation - sound conditions: only during music", async () => {
   executedCalls.length = 0;
   const steppedDuringMusic = await alternator.step();
   assert.equal(steppedDuringMusic, true);
-  assert.ok(executedCalls.some((c) => c.body?.action === "atem:cut" && c.body?.params?.input === 2));
+  assert.ok(executedCalls.some((c) => (c.body?.action === "switch:cut" || c.body?.action === "atem:cut") && c.body?.params?.input === 2));
 
   // Music stops -> condition no longer met
   await rundownEngine.onSoundEvent("music_stop");

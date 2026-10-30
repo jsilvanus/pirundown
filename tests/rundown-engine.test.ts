@@ -69,7 +69,7 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
 
   // Actions for alkusoitto should have dispatched to gateway execute
   assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "cam:preset" && c.body?.actor === "rundown"));
-  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && c.body?.action === "atem:cut" && c.body?.actor === "rundown"));
+  assert.ok(executedCalls.some((c) => c.url.includes("/actions/execute") && (c.body?.action === "switch:cut" || c.body?.action === "atem:cut") && c.body?.actor === "rundown"));
 
   // Line 1 is Section Johdanto; Line 2 is Alkusoitto.
   // When alkusoitto fires, pointer moves to display line 2

@@ -45,7 +45,11 @@ export function summarizeAction(action: unknown): string {
       const preset = parts[3] ? ` (${parts[3]})` : parts[2] ? ` (${parts[2]})` : "";
       return `CAM ${parts[1]}${preset}`;
     }
-    if (parts[0] === "atem" && parts[1] === "cut") return `ATEM Cut ${parts[2] ?? ""}`.trim();
+    if ((parts[0] === "switch" || parts[0] === "atem" || parts[0] === "piswitch") && parts[1] === "cut") return `Switch Cut ${parts[2] ?? ""}`.trim();
+    if ((parts[0] === "switch" || parts[0] === "atem" || parts[0] === "piswitch") && parts[1] === "preview") return `Switch Preview ${parts[2] ?? ""}`.trim();
+    if ((parts[0] === "switch" || parts[0] === "atem" || parts[0] === "piswitch") && parts[1] === "program") return `Switch Program ${parts[2] ?? ""}`.trim();
+    if (parts[0] === "cut") return `Switch Cut ${parts[1] ?? ""}`.trim();
+    if (parts[0] === "preview") return `Switch Preview ${parts[1] ?? ""}`.trim();
     if (parts[0] === "pipgm" || parts[0] === "pgm") return `Hymn ${parts[2] ?? ""}`.trim();
     if (parts[0] === "tally") return `Tally ${parts[2]} (${parts[3] ?? ""})`;
     return action;
@@ -57,12 +61,14 @@ export function summarizeAction(action: unknown): string {
       if (cam.move) return `CAM ${cam.id} move ${cam.move}`;
       if (cam.zoom) return `CAM ${cam.id} zoom ${cam.zoom}`;
     }
-    if ("atem" in action) {
-      const atem = (action as any).atem;
-      if (atem.cut !== undefined) return `ATEM Cut ${atem.cut}`;
-      if (atem.auto) return `ATEM Auto`;
-      if (atem.ftb) return `ATEM FTB`;
-      if (atem.dsk !== undefined) return `ATEM DSK ${atem.dsk} ${atem.state ?? ""}`.trim();
+    const switchAct = (action as any).switch ?? (action as any).atem;
+    if (switchAct) {
+      if (switchAct.cut !== undefined) return `Switch Cut ${switchAct.cut}`;
+      if (switchAct.preview !== undefined) return `Switch Preview ${switchAct.preview}`;
+      if (switchAct.program !== undefined) return `Switch Program ${switchAct.program}`;
+      if (switchAct.auto) return `Switch Auto`;
+      if (switchAct.ftb) return `Switch FTB`;
+      if (switchAct.dsk !== undefined) return `Switch DSK ${switchAct.dsk} ${switchAct.state ?? ""}`.trim();
     }
     if ("pipgm" in action) {
       const pgm = (action as any).pipgm;

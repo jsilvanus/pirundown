@@ -5,11 +5,11 @@ import { VariableStore } from "../src/variables/variable-store.js";
 import { VarfetchEngine } from "../src/variables/varfetch-engine.js";
 import type { AppConfig } from "../src/config.js";
 
-test("ActionDispatcher - dispatches ATEM cut via pigateway actions execute", async () => {
+test("ActionDispatcher - dispatches Switch cut and preview via pigateway actions execute", async () => {
   const calls: Array<{ url: string; body: any }> = [];
   const mockFetch: typeof fetch = async (url, init) => {
     calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? "{}")) });
-    return new Response(JSON.stringify({ ok: true, target: "atem:cut" }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true, target: "switch:cut" }), { status: 200 });
   };
 
   const config: AppConfig = {
@@ -26,11 +26,20 @@ test("ActionDispatcher - dispatches ATEM cut via pigateway actions execute", asy
   const engine = new VarfetchEngine(store);
   const dispatcher = new ActionDispatcher(config, store, engine, mockFetch);
 
-  const result = await dispatcher.dispatch({ atem: { cut: 2 } });
-  assert.equal(result.ok, true);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.url, "http://gateway.test/api/v1/actions/execute");
-  assert.deepEqual(calls[0]?.body, { actor: "rundown", action: "atem:cut", params: { input: 2 } });
+  // 1. Primary: switch cut
+  const cutResult = await dispatcher.dispatch({ switch: { cut: 2 } });
+  assert.equal(cutResult.ok, true);
+  assert.deepEqual(calls[0]?.body, { actor: "rundown", action: "switch:cut", params: { input: 2 } });
+
+  // 2. Switch preview
+  const prevResult = await dispatcher.dispatch({ switch: { preview: 3 } });
+  assert.equal(prevResult.ok, true);
+  assert.deepEqual(calls[1]?.body, { actor: "rundown", action: "switch:preview", params: { input: 3 } });
+
+  // 3. Alias: atem cut
+  const atemResult = await dispatcher.dispatch({ atem: { cut: 4 } });
+  assert.equal(atemResult.ok, true);
+  assert.deepEqual(calls[2]?.body, { actor: "rundown", action: "switch:cut", params: { input: 4 } });
 });
 
 test("ActionDispatcher - dispatches camera preset with variable interpolation via pigateway", async () => {

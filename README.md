@@ -270,13 +270,26 @@ cue:
 
 Actions are executed when an item activates. Multiple actions run in sequential order.
 
-#### ATEM Video Switcher (`atem`)
+#### Video Mixer / Switcher (`switch`, alias `atem`)
+Controls video switching via **PiSwitch** (or Blackmagic ATEM). Use `switch` as primary; `atem` is retained as a full alias.
+
 ```yaml
 actions:
-  - atem: { cut: 1 } # Program cut to input 1
-  - atem: { auto: true } # Auto transition (mix/wipe)
-  - atem: { ftb: true } # Fade to black toggle
-  - atem: { dsk: 1, state: "on" } # Downstream Keyer on/off/toggle
+  # Preview & Program Bus Control
+  - switch: { preview: 2 }       # Set input 2 on preview bus (ready for transition)
+  - switch: { program: 1 }       # Directly change program bus to input 1
+  - switch: { cut: 1 }           # Cut directly to input 1 (or cut preview to program if no input specified)
+
+  # Transitions
+  - switch: { auto: true }       # Mix / auto transition between preview and program
+  - switch: { ftb: true }        # Fade to black toggle
+
+  # Downstream Keyer (DSK)
+  - switch: { dsk: 1, state: "on" } # DSK 1 on, off, or toggle
+
+  # Backward-compatible atem syntax also supported:
+  - atem: { preview: 3 }
+  - atem: { cut: 2 }
 ```
 
 #### PTZ Camera (`cam`)
@@ -331,7 +344,8 @@ actions:
 For concise YAML documents:
 ```yaml
 actions:
-  - "cut:1"
+  - "switch:cut:1"        # or shorthand "cut:1"
+  - "switch:preview:2"    # or shorthand "preview:2"
   - "cam:1:preset:2"
   - "var:preacher=Pastori Matti"
   - "fetch:kirkkovuosi:tanaan"
