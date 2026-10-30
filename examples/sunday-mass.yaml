@@ -4,6 +4,24 @@ service: "Päiväjumalanpalvelus"
 church: "Riihimäen Keskuskirkko"
 date: "2026-11-01"
 
+# Global AI Broadcast Instructions
+ai:
+  pacing: "liturgical"
+  style: "Dignified, calm, contemplative church service. Smooth deliberate camera work."
+  cameraRoles:
+    "1": "Wide altar and sanctuary overview"
+    "2": "Pulpit (saarnatuoli) and lectern medium"
+    "3": "Organ loft and choir"
+  constraints:
+    disallowCongregationCloseup: true
+    minShotDwellSec: 5
+    maxShotDwellSec: 35
+    avoidCutsDuringPrayer: true
+  guidelines:
+    - "Never cut to an empty podium or unlit zone."
+    - "When hymns or organ play, cut to choir/organ or wide sanctuary."
+    - "Maintain wide establishing shot during communion distribution."
+
 # Connectors for external liturgical data (varfetch)
 connectors:
   kirkkovuosi:
@@ -101,6 +119,13 @@ rundown:
     title: "Saarna"
     section: "Sana"
     notes: "Saarnaaja saarnastuolissa."
+    ai:
+      instructions: "Keep main framing on preacher at pulpit with Cam 2. If preacher pauses or gestures, do not cut away."
+      targetZone: "pulpit"
+      primarySubject: "Preacher"
+      preferredCameras: [2, 1]
+      framing: "medium"
+      pacing: "calm"
     cue:
       type: "sound"
       event: "music_stop"

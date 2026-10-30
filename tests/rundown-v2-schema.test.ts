@@ -80,3 +80,93 @@ rundown: []
   const result = parseRundownYaml(yaml);
   assert.equal(result.ok, false);
 });
+
+
+test("Rundown v2 Schema - parses general and per-section AI instructions", () => {
+  const yaml = `
+version: 2
+title: "AI Directed Sunday Mass"
+service: "Messu"
+ai:
+  pacing: "liturgical"
+  style: "Dignified, calm, contemplative Nordic liturgy"
+  cameraRoles:
+    "1": "Wide altar and sanctuary view"
+    "2": "Pulpit close/medium"
+    "3": "Organ loft and choir"
+  constraints:
+    disallowCongregationCloseup: true
+    minShotDwellSec: 5
+    maxShotDwellSec: 35
+    avoidCutsDuringPrayer: true
+  guidelines:
+    - "Never cut to empty podium"
+    - "Maintain wide establishing shot during communion"
+  sections:
+    Johdanto: "Keep wide on altar and procession"
+    Sana: "Focus on reader at pulpit/ambo"
+rundown:
+  - id: "saarna"
+    title: "Saarna (Sermon)"
+    section: "Sana"
+    notes: "Preacher delivers sermon from pulpit"
+    ai:
+      instructions: "Focus primarily on preacher at pulpit with Cam 2. Do not cut during prayers."
+      targetZone: "pulpit"
+      primarySubject: "Preacher"
+      preferredCameras: [2, 1]
+      framing: "medium"
+      pacing: "calm"
+      shotRules:
+        - condition: "preacher_speaking"
+          target: "cam:2:preset:pulpit"
+          priority: 8
+      graphicsCue:
+        lowerThird:
+          title: "Saarna"
+          subtitle: "Pastori Matti"
+    actions:
+      - cam: { id: 2, preset: "pulpit" }
+      - switch: { cut: 2 }
+  - id: "virsi"
+    title: "Virsi 332"
+    section: "Ylistys"
+    ai: "Switch to hymn overlay when singing starts and cut to organ/choir"
+    actions:
+      - switch: { cut: 3 }
+`;
+  const result = parseRundownYaml(yaml);
+  assert.equal(result.ok, true, JSON.stringify(result.errors));
+  
+  // Verify top-level AI instructions
+  const ai = result.data?.ai;
+  assert.ok(typeof ai === "object" && ai !== null);
+  if (typeof ai === "object" && ai !== null) {
+    assert.equal(ai.pacing, "liturgical");
+    assert.equal(ai.style, "Dignified, calm, contemplative Nordic liturgy");
+    assert.equal(ai.constraints?.disallowCongregationCloseup, true);
+    assert.equal(ai.constraints?.minShotDwellSec, 5);
+    assert.equal(ai.guidelines?.length, 2);
+    assert.equal(ai.cameraRoles?.["2"], "Pulpit close/medium");
+  }
+
+  // Verify item 1 with structured AI object
+  const item1 = result.data?.rundown[0];
+  assert.equal(item1?.id, "saarna");
+  assert.ok(typeof item1?.ai === "object" && item1?.ai !== null);
+  if (typeof item1?.ai === "object" && item1?.ai !== null) {
+    assert.equal(item1.ai.targetZone, "pulpit");
+    assert.equal(item1.ai.primarySubject, "Preacher");
+    assert.deepEqual(item1.ai.preferredCameras, [2, 1]);
+    assert.equal(item1.ai.framing, "medium");
+    assert.equal(item1.ai.pacing, "calm");
+    assert.equal(item1.ai.shotRules?.length, 1);
+    assert.equal(item1.ai.shotRules?.[0]?.condition, "preacher_speaking");
+  }
+
+  // Verify item 2 with shorthand string AI instruction
+  const item2 = result.data?.rundown[1];
+  assert.equal(item2?.id, "virsi");
+  assert.equal(typeof item2?.ai, "string");
+  assert.match(item2?.ai as string, /Switch to hymn overlay/);
+});

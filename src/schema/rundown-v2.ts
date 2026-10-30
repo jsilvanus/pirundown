@@ -195,11 +195,66 @@ export const ActionItemSchema = z.union([
 
 export type ActionItem = z.infer<typeof ActionItemSchema>;
 
+// --- AI Instruction Schemas ---
+export const AiPacingSchema = z.enum(["meditative", "calm", "liturgical", "dynamic", "brisk"]);
+export const AiFramingSchema = z.enum(["wide", "medium", "close", "extreme-close", "over-shoulder", "ambient"]);
+
+export const AiShotRuleSchema = z.object({
+  condition: z.string(),
+  target: z.string(),
+  priority: z.number().min(1).max(10).optional(),
+});
+
+export const AiConstraintsSchema = z.object({
+  disallowCongregationCloseup: z.boolean().optional(),
+  minShotDwellSec: z.number().positive().optional(),
+  maxShotDwellSec: z.number().positive().optional(),
+  avoidCutsDuringPrayer: z.boolean().optional(),
+  disallowMoveWhileOnAir: z.boolean().optional(),
+}).passthrough();
+
+export const AiGeneralObjectSchema = z.object({
+  general: z.string().optional(),
+  pacing: z.union([AiPacingSchema, z.string()]).optional(),
+  style: z.string().optional(),
+  guidelines: z.array(z.string()).optional(),
+  constraints: AiConstraintsSchema.optional(),
+  cameraRoles: z.record(z.string()).optional(),
+  sections: z.record(z.union([z.string(), z.record(z.unknown())])).optional(),
+}).passthrough();
+
+export const AiGeneralInstructionsSchema = z.union([
+  z.string(),
+  AiGeneralObjectSchema,
+]);
+
+export type AiGeneralInstructions = z.infer<typeof AiGeneralInstructionsSchema>;
+
+export const AiItemObjectSchema = z.object({
+  instructions: z.string().optional(),
+  targetZone: z.string().optional(),
+  primarySubject: z.string().optional(),
+  preferredCameras: z.array(z.union([z.number(), z.string()])).optional(),
+  framing: z.union([AiFramingSchema, z.string()]).optional(),
+  pacing: z.union([AiPacingSchema, z.string()]).optional(),
+  minDurationSec: z.number().nonnegative().optional(),
+  shotRules: z.array(AiShotRuleSchema).optional(),
+  graphicsCue: z.record(z.unknown()).optional(),
+}).passthrough();
+
+export const AiItemInstructionsSchema = z.union([
+  z.string(),
+  AiItemObjectSchema,
+]);
+
+export type AiItemInstructions = z.infer<typeof AiItemInstructionsSchema>;
+
 // --- Rundown Item Schema ---
 export const RundownSubitemSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   notes: z.string().optional(),
+  ai: AiItemInstructionsSchema.optional(),
   cue: CueSchema.optional(),
   actions: z.array(ActionItemSchema).default([]),
 });
@@ -212,6 +267,7 @@ export const RundownItemSchema: z.ZodType<any> = z.lazy(() =>
     title: z.string().min(1).optional(),
     section: z.string().optional(),
     notes: z.string().optional(),
+    ai: AiItemInstructionsSchema.optional(),
     cue: CueSchema.optional(),
     actions: z.array(ActionItemSchema).default([]),
     subitems: z.array(RundownSubitemSchema).optional(),
@@ -224,6 +280,7 @@ export type RundownItem = {
   title?: string;
   section?: string;
   notes?: string;
+  ai?: AiItemInstructions;
   cue?: Cue;
   actions: ActionItem[];
   subitems?: RundownSubitem[];
@@ -247,6 +304,7 @@ export const RundownV2Schema = z.object({
   service: z.string().optional(),
   church: z.string().optional(),
   date: z.string().optional(),
+  ai: AiGeneralInstructionsSchema.optional(),
   connectors: z.record(ConnectorDefSchema).optional(),
   preflight: PreflightSchema.optional(),
   rundown: z.array(RundownItemSchema).min(1),
