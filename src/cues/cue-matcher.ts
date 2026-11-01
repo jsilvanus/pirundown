@@ -29,7 +29,7 @@ export class CueMatcher {
   private readonly maxContextLines: number;
 
   constructor(options: CueMatcherOptions = {}) {
-    this.piembedUrl = (options.piembedUrl ?? "http://127.0.0.1:3125").replace(/\/+$/, "");
+    this.piembedUrl = (options.piembedUrl ?? "http://127.0.0.1:3300").replace(/\/+$/, "");
     this.fetchFn = options.fetchFn ?? globalThis.fetch;
     this.maxContextLines = options.maxContextLines ?? 20;
   }

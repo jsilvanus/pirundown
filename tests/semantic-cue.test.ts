@@ -41,7 +41,7 @@ test("RundownEngine & CueMatcher - preflights semantic cues and matches rolling 
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   };
 
-  const config = loadConfig({ PIRUNDOWN_PIEMBED_URL: "http://127.0.0.1:3125" });
+  const config = loadConfig({ PIRUNDOWN_PIEMBED_URL: "http://127.0.0.1:3300" });
   const varStore = new VariableStore();
   const varfetch = new VarfetchEngine(varStore);
   const matcher = new CueMatcher({ piembedUrl: config.piembedUrl, fetchFn: mockFetch });
@@ -92,7 +92,7 @@ rundown:
 test("CueMatcher - cheap-first short-circuit skips piembed when exact phrase in 'any' group matches", async () => {
   let piembedCalled = false;
   const matcher = new CueMatcher({
-    piembedUrl: "http://127.0.0.1:3125",
+    piembedUrl: "http://127.0.0.1:3300",
     fetchFn: async () => {
       piembedCalled = true;
       return new Response("{}", { status: 200 });
@@ -129,7 +129,7 @@ test("CueMatcher - cheap-first short-circuit skips piembed when exact phrase in 
 
 test("CueMatcher - falls back to Jaro-Winkler fuzzy matching when piembed is unreachable", async () => {
   const matcher = new CueMatcher({
-    piembedUrl: "http://127.0.0.1:3125",
+    piembedUrl: "http://127.0.0.1:3300",
     fetchFn: async () => {
       throw new Error("ECONNREFUSED");
     },

@@ -1,6 +1,7 @@
 {
   "name": "pirundown",
   "version": "0.1.0",
+  "packageManager": "pnpm@11.23.0",
   "description": "Deterministic service rundown and cue execution engine with Rundown v2 YAML syntax and varfetch",
   "private": true,
   "type": "module",
@@ -31,5 +32,14 @@
   "files": [
     "dist",
     "bin"
-  ]
+  ],
+  "pi": {
+    "service": "pirundown",
+    "displayName": "PiRundown",
+    "layer": "Layer 3: Orchestration",
+    "port": 3400,
+    "ports": {},
+    "healthEndpoint": "/health",
+    "envPortVar": "PIRUNDOWN_PORT"
+  }
 }
