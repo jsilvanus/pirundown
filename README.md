@@ -69,10 +69,10 @@ PiRundown is the **Walker and Cue Engine**. It does not speak directly to serial
 | `PIRUNDOWN_PORT` | `3400` | HTTP service port |
 | `PIRUNDOWN_HOST` | `0.0.0.0` | HTTP service bind address |
 | `PIRUNDOWN_API_KEY` | *(none)* | Optional Bearer API key for mutating HTTP endpoints |
-| `PIRUNDOWN_PIGATEWAY_URL` | `http://127.0.0.1:3100` | Base URL for PiGateway actions & authoritative rundown store |
-| `PIRUNDOWN_PICAM_URL` | `http://127.0.0.1:3300` | Optional direct PiCam URL fallback |
-| `PIRUNDOWN_PILIGHT_URL` | `http://127.0.0.1:3200` | Optional direct PiLight URL fallback |
-| `PIRUNDOWN_PIPROGRAM_URL` | `http://127.0.0.1:3100` | Optional direct PiProgram URL fallback |
+| `PIRUNDOWN_PIGATEWAY_URL` | `http://127.0.0.1:3000` | Base URL for PiGateway actions & authoritative rundown store |
+| `PIRUNDOWN_PICAM_URL` | `http://127.0.0.1:3102` | Optional direct PiCam URL fallback |
+| `PIRUNDOWN_PILIGHT_URL` | `http://127.0.0.1:3107` | Optional direct PiLight URL fallback |
+| `PIRUNDOWN_PIPROGRAM_URL` | `http://127.0.0.1:3200` | Optional direct PiProgram URL fallback |
 | `PIRUNDOWN_AUTO_CONNECT_GATEWAY` | `true` | When `true`, automatically pushes active rundown to gateway and listens to SSE |
 | `PIRUNDOWN_DEFAULT_RUNDOWN_PATH` | *(none)* | Path to default YAML rundown to load automatically on server start |
 
