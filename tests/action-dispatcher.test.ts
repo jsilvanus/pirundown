@@ -17,7 +17,7 @@ test("ActionDispatcher - dispatches Switch cut and preview via pigateway actions
     host: "0.0.0.0",
     pigatewayUrl: "http://gateway.test",
     picamUrl: "http://cam.test",
-    pilightUrl: "http://light.test",
+    pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
   };
@@ -63,7 +63,7 @@ test("ActionDispatcher - dispatches camera preset with variable interpolation vi
     host: "0.0.0.0",
     pigatewayUrl: "http://gateway.test",
     picamUrl: "http://cam.test",
-    pilightUrl: "http://light.test",
+    pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
   };
@@ -102,7 +102,7 @@ test("ActionDispatcher - forwards string shorthand actions to pigateway", async 
     host: "0.0.0.0",
     pigatewayUrl: "http://gateway.test",
     picamUrl: "http://cam.test",
-    pilightUrl: "http://light.test",
+    pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
   };

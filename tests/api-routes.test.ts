@@ -10,7 +10,7 @@ test("API Routes - cue engine toggle and control endpoints", async () => {
     host: "0.0.0.0",
     pigatewayUrl: "http://gateway.test",
     picamUrl: "http://cam.test",
-    pilightUrl: "http://light.test",
+    pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
     defaultRundownPath: resolve("d:/pirundown/examples/sunday-mass.yaml"),
@@ -83,7 +83,7 @@ test("Global Cues - natural language compilation ('when communion starts, do pri
     host: "0.0.0.0",
     pigatewayUrl: "http://gateway.test",
     picamUrl: "http://cam.test",
-    pilightUrl: "http://light.test",
+    pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
   };

@@ -22,7 +22,7 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
     host: "0.0.0.0",
     pigatewayUrl: "http://gateway.test",
     picamUrl: "http://cam.test",
-    pilightUrl: "http://light.test",
+    pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
   };
@@ -147,7 +147,7 @@ test("RundownEngine - operator toggle cue engine on and off for pure human contr
     host: "0.0.0.0",
     pigatewayUrl: "http://gateway.test",
     picamUrl: "http://cam.test",
-    pilightUrl: "http://light.test",
+    pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
   };

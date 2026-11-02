@@ -6,7 +6,7 @@ export interface AppConfig {
   apiKey?: string | undefined;
   pigatewayUrl: string;
   picamUrl: string;
-  pilightUrl: string;
+  pitallyUrl: string;
   piprogramUrl: string;
   piembedUrl: string;
   autoConnectGateway: boolean;
@@ -21,7 +21,7 @@ export function loadConfig(env = process.env): AppConfig {
     apiKey: env.PIRUNDOWN_API_KEY,
     pigatewayUrl: (env.PIRUNDOWN_PIGATEWAY_URL ?? env.PIGATEWAY_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, ""),
     picamUrl: (env.PIRUNDOWN_PICAM_URL ?? env.PICAM_URL ?? "http://127.0.0.1:3102").replace(/\/+$/, ""),
-    pilightUrl: (env.PIRUNDOWN_PILIGHT_URL ?? env.PILIGHT_URL ?? "http://127.0.0.1:3107").replace(/\/+$/, ""),
+    pitallyUrl: (env.PIRUNDOWN_PITALLY_URL ?? env.PITALLY_URL ?? "http://127.0.0.1:3107").replace(/\/+$/, ""),
     piprogramUrl: (env.PIRUNDOWN_PIPROGRAM_URL ?? env.PIPROGRAM_URL ?? "http://127.0.0.1:3200").replace(/\/+$/, ""),
     piembedUrl: (env.PIRUNDOWN_PIEMBED_URL ?? env.PIEMBED_URL ?? "http://127.0.0.1:3300").replace(/\/+$/, ""),
     autoConnectGateway: env.PIRUNDOWN_AUTO_CONNECT_GATEWAY !== "false",
