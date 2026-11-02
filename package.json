@@ -19,15 +19,15 @@
     "pirundown": "bin/pirundown.mjs"
   },
   "dependencies": {
-    "fastify": "^5.2.0",
+    "fastify": "^5.2.1",
     "varfetch": "^0.3.0",
-    "yaml": "^2.7.0",
-    "zod": "^3.24.0"
+    "yaml": "^2.9.1",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/node": "^22.13.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.3"
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.9.0"
   },
   "files": [
     "dist",
