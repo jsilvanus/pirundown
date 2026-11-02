@@ -1,6 +1,6 @@
 # PiRundown
 
-**PiRundown** is the automated rundown walker, cue matching engine, and orchestration backbone for liturgical and live broadcast productions in the **Pi** ecosystem (PiGateway, PiCam, PiLight, PiProgram, PiVoice, PiTube).
+**PiRundown** is the automated rundown walker, cue matching engine, and orchestration backbone for liturgical and live broadcast productions in the **Pi** ecosystem (PiGateway, PiCam, PiTally, PiProgram, PiVoice, PiTube).
 
 It parses Rundown v2 YAML service documents, executes preflight data-fetching (via Varfetch), tracks real-time speech and audio telemetry from PiVoice, matches cues (phrase, fuzzy transcription, sound events, manual buttons), walks through items with a numbered presentational display model, and dispatches actions to hardware via PiGateway.
 
@@ -71,7 +71,7 @@ PiRundown is the **Walker and Cue Engine**. It does not speak directly to serial
 | `PIRUNDOWN_API_KEY` | *(none)* | Optional Bearer API key for mutating HTTP endpoints |
 | `PIRUNDOWN_PIGATEWAY_URL` | `http://127.0.0.1:3000` | Base URL for PiGateway actions & authoritative rundown store |
 | `PIRUNDOWN_PICAM_URL` | `http://127.0.0.1:3102` | Optional direct PiCam URL fallback |
-| `PIRUNDOWN_PILIGHT_URL` | `http://127.0.0.1:3107` | Optional direct PiLight URL fallback |
+| `PIRUNDOWN_PITALLY_URL` | `http://127.0.0.1:3107` | Optional direct PiTally URL fallback |
 | `PIRUNDOWN_PIPROGRAM_URL` | `http://127.0.0.1:3200` | Optional direct PiProgram URL fallback |
 | `PIRUNDOWN_AUTO_CONNECT_GATEWAY` | `true` | When `true`, automatically pushes active rundown to gateway and listens to SSE |
 | `PIRUNDOWN_DEFAULT_RUNDOWN_PATH` | *(none)* | Path to default YAML rundown to load automatically on server start |
