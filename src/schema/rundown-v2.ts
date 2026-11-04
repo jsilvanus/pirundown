@@ -254,6 +254,14 @@ export const AiGeneralInstructionsSchema = z.union([
 
 export type AiGeneralInstructions = z.infer<typeof AiGeneralInstructionsSchema>;
 
+export const AiGraphicsOptionsSchema = z.object({
+  lowerThird: z.array(z.string()).optional().describe("Allowed lower-third template IDs for this item"),
+  overlay: z.array(z.string()).optional().describe("Allowed overlay template IDs for this item"),
+  templates: z.array(z.string()).optional().describe("Explicit list of graphic template IDs available for this item"),
+}).passthrough();
+
+export type AiGraphicsOptions = z.infer<typeof AiGraphicsOptionsSchema>;
+
 export const AiItemObjectSchema = z.object({
   instructions: z.string().optional(),
   targetZone: z.string().optional(),
@@ -264,6 +272,7 @@ export const AiItemObjectSchema = z.object({
   minDurationSec: z.number().nonnegative().optional(),
   shotRules: z.array(AiShotRuleSchema).optional(),
   graphicsCue: z.record(z.unknown()).optional(),
+  graphicsOptions: AiGraphicsOptionsSchema.optional(),
 }).passthrough();
 
 export const AiItemInstructionsSchema = z.union([

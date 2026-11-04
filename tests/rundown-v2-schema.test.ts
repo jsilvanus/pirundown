@@ -125,6 +125,14 @@ rundown:
         lowerThird:
           title: "Saarna"
           subtitle: "Pastori Matti"
+      graphicsOptions:
+        lowerThird:
+          - "lower-third-speaker"
+        overlay:
+          - "scripture-reading"
+        templates:
+          - "lower-third-speaker"
+          - "scripture-reading"
     actions:
       - cam: { id: 2, preset: "pulpit" }
       - switch: { cut: 2 }
@@ -162,6 +170,9 @@ rundown:
     assert.equal(item1.ai.pacing, "calm");
     assert.equal(item1.ai.shotRules?.length, 1);
     assert.equal(item1.ai.shotRules?.[0]?.condition, "preacher_speaking");
+    assert.deepEqual(item1.ai.graphicsOptions?.lowerThird, ["lower-third-speaker"]);
+    assert.deepEqual(item1.ai.graphicsOptions?.overlay, ["scripture-reading"]);
+    assert.deepEqual(item1.ai.graphicsOptions?.templates, ["lower-third-speaker", "scripture-reading"]);
   }
 
   // Verify item 2 with shorthand string AI instruction
