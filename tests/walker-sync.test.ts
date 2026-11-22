@@ -7,7 +7,7 @@ import { CueMatcher } from "../src/cues/cue-matcher.js";
 import { ActionDispatcher } from "../src/actions/action-dispatcher.js";
 import { RundownEventBroker } from "../src/events.js";
 import { loadRundownFile } from "../src/parser/yaml-parser.js";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 test("Walker - synchronizes with gateway rundown state updates", async () => {
   const store = new VariableStore();
@@ -23,7 +23,7 @@ test("Walker - synchronizes with gateway rundown state updates", async () => {
 
   const walker = new RundownEngine(store, engine, matcher, dispatcher, broker);
 
-  const yamlPath = resolve("d:/pirundown/examples/sunday-mass.yaml");
+  const yamlPath = fileURLToPath(new URL("../examples/sunday-mass.yaml", import.meta.url));
   const parsed = loadRundownFile(yamlPath);
   assert.equal(parsed.ok, true);
   await walker.load(parsed.data!);

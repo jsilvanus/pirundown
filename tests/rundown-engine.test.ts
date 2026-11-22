@@ -8,7 +8,7 @@ import { ActionDispatcher } from "../src/actions/action-dispatcher.js";
 import { RundownEventBroker, type RundownEvent } from "../src/events.js";
 import { RundownEngine } from "../src/engine/rundown-engine.js";
 import type { AppConfig } from "../src/config.js";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async () => {
   const executedCalls: Array<{ url: string; body?: any }> = [];
@@ -45,7 +45,7 @@ test("RundownEngine - end-to-end service execution with sunday-mass.yaml", async
   );
 
   // 1. Load YAML rundown
-  const yamlPath = resolve("d:/pirundown/examples/sunday-mass.yaml");
+  const yamlPath = fileURLToPath(new URL("../examples/sunday-mass.yaml", import.meta.url));
   const parseResult = loadRundownFile(yamlPath);
   assert.equal(parseResult.ok, true, `YAML parse errors: ${parseResult.errors?.join("; ")}`);
   assert.ok(parseResult.data);
@@ -163,7 +163,7 @@ test("RundownEngine - operator toggle cue engine on and off for pure human contr
 
   const engine = new RundownEngine(variableStore, varfetchEngine, cueMatcher, actionDispatcher, eventBroker);
 
-  const yamlPath = resolve("d:/pirundown/examples/sunday-mass.yaml");
+  const yamlPath = fileURLToPath(new URL("../examples/sunday-mass.yaml", import.meta.url));
   const parseResult = loadRundownFile(yamlPath);
   assert.equal(parseResult.ok, true);
   await engine.load(parseResult.data!);

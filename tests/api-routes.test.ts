@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildApp } from "../src/app.js";
 import type { AppConfig } from "../src/config.js";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 test("API Routes - cue engine toggle and control endpoints", async () => {
   const config: AppConfig = {
@@ -13,7 +13,7 @@ test("API Routes - cue engine toggle and control endpoints", async () => {
     pitallyUrl: "http://light.test",
     piprogramUrl: "http://pgm.test",
     autoConnectGateway: false,
-    defaultRundownPath: resolve("d:/pirundown/examples/sunday-mass.yaml"),
+    defaultRundownPath: fileURLToPath(new URL("../examples/sunday-mass.yaml", import.meta.url)),
   };
 
   const { app } = await buildApp(config, {
