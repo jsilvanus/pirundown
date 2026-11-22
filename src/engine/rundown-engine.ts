@@ -118,6 +118,17 @@ export interface RundownStatusSnapshot {
   history: Array<{ timestamp: string; type: string; detail: unknown }>;
 }
 
+/** True when the cue is a sound cue or a composite holding one (the only cues a sound event can match). */
+function cueUsesSound(cue: unknown): boolean {
+  const c = cue as { type?: string; conditions?: unknown[] } | null | undefined;
+  if (!c || typeof c !== "object") return false;
+  if (c.type === "sound") return true;
+  if ((c.type === "all" || c.type === "any") && Array.isArray(c.conditions)) {
+    return c.conditions.some((cond) => (cond as { type?: string } | null)?.type === "sound");
+  }
+  return false;
+}
+
 export class RundownEngine {
   private rundown: RundownV2 | null = null;
   private currentExecutableId: string | null = null;
@@ -130,6 +141,8 @@ export class RundownEngine {
   private activeAlternator: Alternator | null = null;
   private enforcedTimer: NodeJS.Timeout | null = null;
   private currentSoundState: "speech" | "music" | "silence" | "unknown" = "unknown";
+  /** True when any executable item of the loaded rundown has a sound cue (refreshed in load()). */
+  private hasSoundCues = false;
 
   private serviceStartedAtMs: number = Date.now();
   private sectionStartedAtMs: number = Date.now();
@@ -190,6 +203,7 @@ export class RundownEngine {
     for (const item of executableItems) {
       this.itemStates.set(item.id, "pending");
     }
+    this.hasSoundCues = executableItems.some((it) => cueUsesSound(it.cue));
 
     // 4. Fire preflight fetches if configured
     if (doc.preflight?.fetch && doc.preflight.fetch.length > 0) {
@@ -724,6 +738,8 @@ export class RundownEngine {
     else if (event === "silence") this.currentSoundState = "silence";
     if (!this.cueEngineEnabled) return false;
     if (!this.rundown) return false;
+    // Telemetry arrives at ~10 Hz; without any sound cue no evaluation can match.
+    if (!this.hasSoundCues) return false;
 
     const { executableItems } = buildRundownDisplay(
       this.rundown.rundown,
