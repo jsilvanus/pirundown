@@ -7,6 +7,21 @@ export interface GatewaySseClientOptions {
   logger?: { info: (...args: any[]) => void; warn: (...args: any[]) => void; error: (...args: any[]) => void };
 }
 
+/**
+ * Gateway event types pirundown handles. This is the single source of truth: the
+ * subscription URL (`?types=`) is built from it and `handleSseBlock` dispatches only
+ * on these types, so adding a handler requires adding the type here (the compiler
+ * enforces it through `GatewayEventType`).
+ */
+export const GATEWAY_EVENT_TYPES = ["rundown", "transcript", "pivoice", "pisound"] as const;
+export type GatewayEventType = (typeof GATEWAY_EVENT_TYPES)[number];
+
+/** Events URL asking pigateway to send only the types we handle (older gateways ignore the param). */
+export function gatewayEventsUrl(gatewayUrl: string): string {
+  const base = gatewayUrl.replace(/\/+$/, "");
+  return `${base}/api/v1/events?types=${encodeURIComponent(GATEWAY_EVENT_TYPES.join(","))}`;
+}
+
 export class GatewaySseClient {
   private readonly gatewayUrl: string;
   private readonly engine: RundownEngine;
@@ -48,7 +63,7 @@ export class GatewaySseClient {
 
     while (!signal.aborted) {
       try {
-        const url = `${this.gatewayUrl}/api/v1/events`;
+        const url = gatewayEventsUrl(this.gatewayUrl);
         this.logger?.info?.(`Connecting to Gateway SSE: ${url}`);
 
         const response = await this.fetchFn(url, {
@@ -110,12 +125,20 @@ export class GatewaySseClient {
       const type = payload.type ?? eventType;
       const data = payload.data ?? payload;
 
-      if (type === "rundown") {
-        this.engine.onGatewayRundownState(data);
-      } else if (type === "transcript" && data?.text) {
-        void this.engine.onTranscript(String(data.text));
-      } else if (type === "pivoice" || type === "pisound") {
-        this.handleAudioTelemetry(data);
+      switch (type as GatewayEventType) {
+        case "rundown":
+          this.engine.onGatewayRundownState(data);
+          break;
+        case "transcript":
+          if (data?.text) void this.engine.onTranscript(String(data.text));
+          break;
+        case "pivoice":
+        case "pisound":
+          this.handleAudioTelemetry(data);
+          break;
+        default:
+          // Not subscribed to; an older gateway that ignores ?types= still sends these.
+          break;
       }
     } catch {
       // Ignore unparseable frames
